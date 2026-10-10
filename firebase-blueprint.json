@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered clan member profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "scout", "spectator"] },
+        "clan": { "type": "string" },
+        "contact": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "lastActive": { "type": "number" }
+      },
+      "required": ["id", "username", "role"]
+    },
+    "BossState": {
+      "title": "BossState",
+      "description": "Boss respawn tracking status and timer data",
+      "type": "object",
+      "properties": {
+        "bossId": { "type": "string" },
+        "phase": { "type": "string" },
+        "timeOfDeath": { "type": "string" },
+        "timeOfDeathTimestamp": { "type": "number" },
+        "selectedAccountId": { "type": "string" },
+        "selectedCharacterName": { "type": "string" },
+        "selectedCamCode": { "type": "string" }
+      },
+      "required": ["bossId", "phase"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Clan members collection"
+    },
+    "/bosses/{bossId}": {
+      "schema": "BossState",
+      "description": "Epic boss tracker states"
+    }
+  }
+}

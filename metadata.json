@@ -1,0 +1,6 @@
+{
+  "name": "Lineage 2 Epic Boss Radar - Pay2KILL",
+  "description": "Тематический радар боссов Lineage 2 (UE5). Контроль спотов эпик-боссов, дежурство скаутов на точках и созыв Командного Канала при респауне.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
