@@ -85,8 +85,15 @@ export function BossTrackerTable({
     mySpectatorId,
   } = useBossTrackerStore();
 
-  const isScoutOrAdmin = role === 'scout' || role === 'admin';
-  const { timezoneOffset, timezoneId } = useAuthStore();
+  const { user: authUser, timezoneOffset, timezoneId } = useAuthStore();
+  const canEditBosses = Boolean(
+    authUser?.permissions?.canEditBosses ||
+    authUser?.role === 'admin' ||
+    authUser?.role === 'scout' ||
+    role === 'admin' ||
+    role === 'scout'
+  );
+  const isScoutOrAdmin = canEditBosses;
   const activeTimezoneOption = getTimezoneOption(timezoneId);
 
   const { characters, activeCharacterId, setActiveCharacter } = useL2SpotStore();
@@ -206,24 +213,20 @@ export function BossTrackerTable({
   };
 
   const handleTriggerSpawnAlert = (boss: TrackerBoss) => {
-    // Only spectators on the tribune can press the button!
-    if (!isPinVerified) {
-      if (onOpenAdminModal) {
-        onOpenAdminModal();
-      }
-      if (onShowToast) {
-        onShowToast('⚠️ Оповещать о респе могут только авторизованные наблюдатели на трибуне (введите PIN в шапке)!');
-      }
-      return;
-    }
-
     const mySpec = spectators.find((s) => s.id === mySpectatorId || s.isMe);
     const userChar = {
-      nickname: mySpec?.nickname || activeChar?.nickname || (role === 'admin' ? 'КЛ (Админ)' : role === 'scout' ? 'Скаут' : 'Наблюдатель'),
-      className: mySpec?.className || activeChar?.className || (role === 'admin' ? 'Silver Ranger' : role === 'scout' ? 'Warlock' : 'Bishop'),
+      nickname:
+        authUser?.displayName ||
+        mySpec?.nickname ||
+        activeChar?.nickname ||
+        (canEditBosses ? 'Скаут' : 'Наблюдатель'),
+      className:
+        mySpec?.className ||
+        activeChar?.className ||
+        (canEditBosses ? 'Silver Ranger' : 'Watcher'),
       level: mySpec?.level || activeChar?.levelNumber || 75,
-      clanName: mySpec?.clanName || activeChar?.clanName || 'Pay2KILL',
-      role,
+      clanName: authUser?.clanName || mySpec?.clanName || activeChar?.clanName || 'Pay2KILL',
+      role: (authUser?.role || (canEditBosses ? 'scout' : 'viewer')) as any,
     };
 
     triggerSpawnAlert(boss.id, userChar);

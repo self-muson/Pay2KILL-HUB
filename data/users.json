@@ -25,8 +25,20 @@
       ],
       "activeCharacterId": "char_muson_main",
       "createdAt": 1791478420242,
-      "lastActiveAt": 1791478420242
+      "lastActiveAt": 1791627079653,
+      "permissions": {
+        "canViewBosses": true,
+        "canEditBosses": true,
+        "canViewLfg": true,
+        "canManageLfg": true,
+        "canManageUsers": true
+      }
     }
   ],
-  "sessions": {}
+  "sessions": {
+    "tok_4daa2ccc0cbefa0a05f54c04b945bb2c2ae72b5df3ac67d2": {
+      "userId": "usr_admin_muson",
+      "expiresAt": 1794219058771
+    }
+  }
 }

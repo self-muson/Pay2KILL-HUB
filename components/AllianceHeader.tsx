@@ -405,15 +405,26 @@ export function AllianceHeader({
                 </button>
               )}
 
-              {/* Lock / Exit PIN Session */}
-              <button
-                onClick={onLockPin}
-                className="p-1.5 sm:p-2 rounded-lg bg-[#121620] border border-slate-800 text-slate-400 hover:text-amber-400 transition-colors shrink-0 min-h-[34px] min-w-[34px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center"
-                title="Заблокировать PIN сессию"
-                aria-label="Lock PIN"
-              >
-                <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              </button>
+              {/* Logout / Login Action */}
+              {user ? (
+                <button
+                  onClick={onLockPin}
+                  className="p-1.5 sm:p-2 rounded-lg bg-[#121620] border border-slate-800 text-slate-400 hover:text-red-400 hover:border-red-900/60 transition-colors shrink-0 min-h-[34px] min-w-[34px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center cursor-pointer"
+                  title="Выйти из учетной записи"
+                  aria-label="Logout"
+                >
+                  <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="p-1.5 sm:p-2 rounded-lg bg-[#121620] border border-slate-800 text-amber-400 hover:text-amber-300 transition-colors shrink-0 min-h-[34px] min-w-[34px] sm:min-h-[36px] sm:min-w-[36px] flex items-center justify-center cursor-pointer"
+                  title="Войти в систему"
+                  aria-label="Login"
+                >
+                  <LogIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -529,15 +540,15 @@ export function AllianceHeader({
                     </button>
                   )}
 
-                  {/* Admin PIN config */}
-                  {role === 'admin' && onOpenBossAdminModal && (
+                  {/* Admin Roles & Permissions panel */}
+                  {isAdmin && (
                     <button
-                      onClick={onOpenBossAdminModal}
-                      className="px-2.5 py-1.5 rounded-lg bg-red-950/70 hover:bg-red-900 border border-red-500 text-red-200 text-xs font-mono font-bold flex items-center gap-1 shadow"
-                      title="Панель управления PIN-кодами клана"
+                      onClick={() => setIsAdminUsersModalOpen(true)}
+                      className="px-2.5 py-1.5 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-500 text-amber-200 text-xs font-mono font-bold flex items-center gap-1 shadow cursor-pointer"
+                      title="Управление мемберами и раздача прав доступа"
                     >
-                      <Settings className="w-3.5 h-3.5 text-red-400" />
-                      <span className="hidden xl:inline">Панель PIN</span>
+                      <Crown className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="hidden xl:inline">Права мемберов</span>
                     </button>
                   )}
 
@@ -619,13 +630,23 @@ export function AllianceHeader({
                 )}
               </button>
 
-              <button
-                onClick={onLockPin}
-                className="p-1 rounded bg-[#121620] border border-slate-800 text-slate-400 hover:text-amber-400 transition-colors min-h-[28px] min-w-[28px] flex items-center justify-center"
-                title="Lock"
-              >
-                <Lock className="w-3.5 h-3.5" />
-              </button>
+              {user ? (
+                <button
+                  onClick={onLockPin}
+                  className="p-1 rounded bg-[#121620] border border-slate-800 text-slate-400 hover:text-red-400 transition-colors min-h-[28px] min-w-[28px] flex items-center justify-center cursor-pointer"
+                  title="Выйти"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="p-1 rounded bg-[#121620] border border-slate-800 text-amber-400 hover:text-amber-300 transition-colors min-h-[28px] min-w-[28px] flex items-center justify-center cursor-pointer"
+                  title="Войти"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 

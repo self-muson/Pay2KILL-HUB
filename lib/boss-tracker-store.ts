@@ -124,7 +124,7 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
   return {
     bosses: buildInitialBosses(),
     role: 'viewer',
-    isPinVerified: false,
+    isPinVerified: true,
     pinsConfig: DEFAULT_PINS_CONFIG,
     spectators: INITIAL_SPECTATORS,
     mySpectatorId: 'my_spec_' + Math.random().toString(36).substring(2, 8),
@@ -234,7 +234,7 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
 
         set({
           role: savedRole,
-          isPinVerified: isSavedVerified,
+          isPinVerified: true,
           pinsConfig: initialPinsConfig,
           selectedCameraGroup: storedGroup,
           soundVolume: audioManager.getVolume(),

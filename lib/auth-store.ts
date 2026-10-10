@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import { UserSessionData, UserRole } from './user-store';
+import { UserSessionData, UserRole, UserPermissions } from './user-types';
 import { UserCharacter } from './l2-spot-types';
 import { TIMEZONE_OPTIONS, DEFAULT_TIMEZONE_ID, getTimezoneOption } from './timezone-manager';
 import { useBossTrackerStore } from './boss-tracker-store';
@@ -35,6 +35,7 @@ interface AuthState {
     username: string;
     displayName: string;
     role: UserRole;
+    permissions: UserPermissions;
     clanName: string;
     discordTag?: string;
     characters: UserCharacter[];
@@ -59,6 +60,7 @@ interface AuthState {
   saveCharacters: (characters: UserCharacter[], activeId?: string) => Promise<boolean>;
   loadAllUsers: () => Promise<void>;
   changeUserRole: (targetUserId: string, newRole: UserRole) => Promise<boolean>;
+  updateUserPermissions: (targetUserId: string, permissions: Partial<UserPermissions>) => Promise<boolean>;
   removeUser: (targetUserId: string) => Promise<boolean>;
 }
 
@@ -359,6 +361,76 @@ export const useAuthStore = create<AuthState>((set, get) => {
         const data = await res.json();
         if (res.ok && data.success) {
           set({ allUsers: data.users });
+          return true;
+        }
+        return false;
+      } catch (e) {
+        return false;
+      }
+    },
+
+    updateUserPermissions: async (targetUserId, permissions) => {
+      const token = get().token;
+      if (!token) return false;
+
+      // Optimistic update
+      const currentUsers = get().allUsers;
+      const targetUser = currentUsers.find((u) => u.id === targetUserId);
+      if (targetUser) {
+        const optimisticUsers = currentUsers.map((u) => {
+          if (u.id !== targetUserId) return u;
+          const mergedPerms = { ...u.permissions, ...permissions };
+          const derivedRole = mergedPerms.canManageUsers
+            ? 'admin'
+            : mergedPerms.canEditBosses
+            ? 'scout'
+            : 'member';
+          return {
+            ...u,
+            permissions: mergedPerms,
+            role: derivedRole as UserRole,
+          };
+        });
+        set({ allUsers: optimisticUsers });
+
+        // If updating self
+        if (get().user?.id === targetUserId) {
+          const selfUser = get().user!;
+          const mergedPerms = { ...selfUser.permissions, ...permissions };
+          set({
+            user: {
+              ...selfUser,
+              permissions: mergedPerms,
+              role: mergedPerms.canManageUsers ? 'admin' : mergedPerms.canEditBosses ? 'scout' : 'member',
+            },
+          });
+        }
+      }
+
+      try {
+        const res = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'update_user_permissions',
+            token,
+            targetUserId,
+            permissions,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success && Array.isArray(data.users)) {
+          set({ allUsers: data.users });
+          // If self was updated, update current user too
+          if (get().user?.id === targetUserId && data.updatedUser) {
+            set({
+              user: {
+                ...get().user!,
+                permissions: data.updatedUser.permissions,
+                role: data.updatedUser.role,
+              },
+            });
+          }
           return true;
         }
         return false;

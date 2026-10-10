@@ -19,7 +19,6 @@ import { useBossTrackerStore } from '@/lib/boss-tracker-store';
 import { useL2SpotStore } from '@/lib/l2-spot-store';
 import { audioManager } from '@/lib/audio-manager';
 import { CAMERA_ACCOUNTS } from '@/lib/camera-accounts-data';
-import { BossTrackerPinModal } from './BossTrackerPinModal';
 import { BossTrackerTribune } from './BossTrackerTribune';
 import { BossTrackerTable } from './BossTrackerTable';
 import { BossTrackerAdminModal } from './BossTrackerAdminModal';
@@ -231,9 +230,6 @@ export function BossTrackerApp({
 
   return (
     <div className="space-y-4">
-      {/* Access Gate if not verified */}
-      {!isPinVerified && <BossTrackerPinModal />}
-
       {/* Toast Notification */}
       {toastMsg && (
         <div className="fixed top-4 right-4 z-50 px-4 py-2.5 bg-[#151c27] border-2 border-amber-400 text-amber-200 text-xs font-bold font-mono rounded-xl shadow-2xl flex items-center gap-2 animate-bounce">

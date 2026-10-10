@@ -32,7 +32,6 @@ import { AllianceHeader } from '@/components/AllianceHeader';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { QueuePlayerCard } from '@/components/QueuePlayerCard';
 import { ActiveGroupCard } from '@/components/ActiveGroupCard';
-import { PinGateModal } from '@/components/PinGateModal';
 import { PlayerFormModal } from '@/components/PlayerFormModal';
 import { GroupFormModal } from '@/components/GroupFormModal';
 import { RaidLeaderAssignModal } from '@/components/RaidLeaderAssignModal';
@@ -62,12 +61,14 @@ export default function LfgDashboardPage() {
 
   // Global Auth & Roles Store
   const {
+    user,
     isAuthModalOpen,
     setIsAuthModalOpen,
     isAdminUsersModalOpen,
     setIsAdminUsersModalOpen,
     isProfileModalOpen,
     setIsProfileModalOpen,
+    logout,
   } = useAuthStore();
 
   // Boss Tracker Modal Controls
@@ -81,9 +82,8 @@ export default function LfgDashboardPage() {
   const [mySessionId, setMySessionId] = useState<string>('');
   const [lang, setLang] = useState<Language>('ru');
 
-  // Authorization State (LFG App)
-  const [isPinVerified, setIsPinVerified] = useState<boolean>(false);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  // Authorization State derived from logged-in user profile
+  const isAdmin = Boolean(user?.role === 'admin' || user?.permissions?.canManageUsers);
 
   useEffect(() => {
     setHasMounted(true);
@@ -104,12 +104,9 @@ export default function LfgDashboardPage() {
         setCurrentApp(savedApp);
       }
 
-      const savedPin = localStorage.getItem('tl_alliance_pin_verified') === 'true';
-      const savedAdmin = localStorage.getItem('tl_alliance_is_admin') === 'true';
-      setIsPinVerified(savedPin);
-      setIsAdmin(savedAdmin);
-
       // Clean up legacy keys
+      localStorage.removeItem('tl_alliance_pin_verified');
+      localStorage.removeItem('tl_alliance_pin_version');
       localStorage.removeItem('p2k_boss_tracker_pin_v2');
       localStorage.removeItem('p2k_boss_tracker_role_v2');
       localStorage.removeItem('p2k_boss_tracker_pin_version_v2');
@@ -117,20 +114,6 @@ export default function LfgDashboardPage() {
 
     return () => clearTimeout(timer);
   }, []);
-
-  // Sync auth state between boss-tracker-store and root page state
-  useEffect(() => {
-    const unsub = useBossTrackerStore.subscribe((state) => {
-      if (state.isPinVerified !== isPinVerified) {
-        setIsPinVerified(state.isPinVerified);
-      }
-      const adminRole = state.role === 'admin';
-      if (adminRole !== isAdmin) {
-        setIsAdmin(adminRole);
-      }
-    });
-    return () => unsub();
-  }, [isPinVerified, isAdmin]);
 
   const handleSwitchApp = (newApp: 'lfg' | 'boss_tracker') => {
     setCurrentApp(newApp);
@@ -150,11 +133,7 @@ export default function LfgDashboardPage() {
         if (data.type === 'READY_CHECK_CONFIRMED') {
           audioManager.stopReadyCheckRadio();
         } else if (data.type === 'FORCE_LOGOUT_ALL') {
-          localStorage.removeItem('tl_alliance_pin_verified');
-          localStorage.removeItem('tl_alliance_is_admin');
-          setIsPinVerified(false);
-          setIsAdmin(false);
-          useBossTrackerStore.getState().logoutPin();
+          useAuthStore.getState().logout();
           showToast(
             lang === 'ru'
               ? '⚠️ Сессии сброшены Администратором клана.'
@@ -233,26 +212,6 @@ export default function LfgDashboardPage() {
       const res = await fetch('/api/lfg');
       if (res.ok) {
         const data = await res.json();
-
-        // Enforce remote session invalidation if admin cleared sessions
-        if (data.pinVersion && typeof window !== 'undefined') {
-          const savedVer = localStorage.getItem('tl_alliance_pin_version');
-          if (savedVer && Number(savedVer) < data.pinVersion) {
-            localStorage.removeItem('tl_alliance_pin_verified');
-            localStorage.removeItem('tl_alliance_is_admin');
-            localStorage.removeItem('p2k_boss_tracker_pin_v2');
-            localStorage.removeItem('p2k_boss_tracker_role_v2');
-            localStorage.removeItem('p2k_boss_tracker_pin_version_v2');
-            localStorage.setItem('tl_alliance_pin_version', String(data.pinVersion));
-            setIsPinVerified(false);
-            setIsAdmin(false);
-            useBossTrackerStore.getState().logoutPin();
-            showToast('⚠️ Сессии были сброшены Администратором. Пожалуйста, введите PIN-код.');
-          } else {
-            localStorage.setItem('tl_alliance_pin_version', String(data.pinVersion));
-          }
-        }
-
         setQueuePlayers(data.queuePlayers || []);
         setActiveGroups(data.activeGroups || []);
         if (data.clans && Array.isArray(data.clans)) {
@@ -266,13 +225,12 @@ export default function LfgDashboardPage() {
         }
       }
     } catch {
-      // Transient network or reload drop during polling interval
+      // Transient network drop during polling interval
     }
   }, []);
 
   // Poll for Real-Time Synchronization
   useEffect(() => {
-    if (!isPinVerified) return;
     let isMounted = true;
 
     const loadData = async () => {
@@ -290,7 +248,7 @@ export default function LfgDashboardPage() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [isPinVerified, fetchLfgData]);
+  }, [fetchLfgData]);
 
   // Handle Player Queue Refresh
   const handleRefreshPlayer = async (id: string) => {
@@ -582,13 +540,10 @@ export default function LfgDashboardPage() {
     }
   };
 
-  // Lock PIN / Logout
-  const handleLockPin = () => {
-    localStorage.removeItem('tl_alliance_pin_verified');
-    localStorage.removeItem('tl_alliance_is_admin');
-    setIsPinVerified(false);
-    setIsAdmin(false);
-    useBossTrackerStore.getState().logoutPin();
+  // User Logout
+  const handleLogout = () => {
+    logout();
+    showToast(lang === 'ru' ? 'Вы вышли из учетной записи' : 'Logged out');
   };
 
   // Filtered Queue Players
@@ -655,18 +610,6 @@ export default function LfgDashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#090b0e] text-slate-100 flex flex-col font-sans selection:bg-[#c2a363] selection:text-slate-950">
-      {/* Security Gate PIN Modal if unverified (only for LFG App after mount) */}
-      {hasMounted && currentApp === 'lfg' && !isPinVerified && (
-        <PinGateModal
-          lang={lang}
-          onSuccess={(_role, adminMode) => {
-            setIsPinVerified(true);
-            setIsAdmin(adminMode);
-            fetchLfgData();
-          }}
-        />
-      )}
-
       {/* Header */}
       <AllianceHeader
         lang={lang}
@@ -685,7 +628,7 @@ export default function LfgDashboardPage() {
         onOpenCharacterProfile={() => setIsCharModalOpen(true)}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
-        onLockPin={handleLockPin}
+        onLockPin={handleLogout}
         onResetDemo={handleResetDemo}
         onRefreshData={handleManualRefresh}
         activeQueueCount={queuePlayers.length}
@@ -1297,8 +1240,8 @@ export default function LfgDashboardPage() {
           </div>
           <div>
             {lang === 'ru'
-              ? 'Синхронизация в реальном времени · Доступ по PIN'
-              : 'Real-time sync · PIN protected'}
+              ? 'Синхронизация в реальном времени · Единая авторизация'
+              : 'Real-time sync · Unified Auth'}
           </div>
         </div>
       </footer>

@@ -2,39 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { UserCharacter } from './l2-spot-types';
+import { UserRole, AppUser, UserSessionData, UserPermissions, getDefaultPermissions } from './user-types';
+
+export type { UserRole, AppUser, UserSessionData, UserPermissions };
+export { getDefaultPermissions };
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const BACKUP_FILE = '/tmp/p2k_users.json';
-
-export type UserRole = 'admin' | 'scout' | 'member';
-
-export interface AppUser {
-  id: string;
-  username: string; // unique lowercase or normalized
-  displayName: string;
-  passwordHash: string; // sha256 with salt
-  salt: string;
-  role: UserRole;
-  clanName: string;
-  discordTag?: string;
-  characters: UserCharacter[];
-  activeCharacterId?: string;
-  createdAt: number;
-  lastActiveAt: number;
-}
-
-export interface UserSessionData {
-  id: string;
-  username: string;
-  displayName: string;
-  role: UserRole;
-  clanName: string;
-  discordTag?: string;
-  characters: UserCharacter[];
-  activeCharacterId?: string;
-  token: string;
-}
 
 interface UsersDatabase {
   users: AppUser[];
@@ -89,8 +64,14 @@ function loadUsers(): void {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.users)) {
+        // Backfill missing permissions for existing users
+        const migratedUsers: AppUser[] = parsed.users.map((u: any) => ({
+          ...u,
+          permissions: u.permissions || getDefaultPermissions(u.role || 'member'),
+        }));
+
         dbState = {
-          users: parsed.users,
+          users: migratedUsers,
           sessions: parsed.sessions || {},
         };
         return;
@@ -109,6 +90,7 @@ function loadUsers(): void {
     passwordHash: hashPassword('admin1234', adminSalt),
     salt: adminSalt,
     role: 'admin',
+    permissions: getDefaultPermissions('admin'),
     clanName: 'Pay2KILL',
     discordTag: 'muson#0001',
     characters: [
@@ -164,10 +146,17 @@ export function registerUser(data: {
   const salt = crypto.randomBytes(16).toString('hex');
   const passwordHash = hashPassword(data.password, salt);
 
-  // Check role: if invite code matches admin or scout PIN
+  // If this is the very first user, or username is muson/admin/cl/leader, make admin
   let initialRole: UserRole = 'member';
   const cleanInvite = data.inviteCode?.trim() || '';
-  if (cleanInvite === '1234' || cleanUsername === 'muson' || cleanUsername === 'cl' || cleanUsername === 'leader') {
+  if (
+    cleanInvite === '1234' ||
+    cleanUsername === 'muson' ||
+    cleanUsername === 'cl' ||
+    cleanUsername === 'admin' ||
+    cleanUsername === 'leader' ||
+    dbState.users.length === 0
+  ) {
     initialRole = 'admin';
   } else if (cleanInvite === '1555') {
     initialRole = 'scout';
@@ -179,8 +168,8 @@ export function registerUser(data: {
   const initialChar: UserCharacter = {
     id: `char_${newUserId}_1`,
     nickname: defaultCharName,
-    className: initialRole === 'admin' ? 'Warlock (Котовод)' : initialRole === 'scout' ? 'Silver Ranger' : 'Watcher',
-    classArchetype: initialRole === 'admin' ? 'SUMMONER' : initialRole === 'scout' ? 'ARCHER' : 'SUPPORT',
+    className: initialRole === 'admin' ? 'Warlock (Котовод)' : initialRole === 'scout' ? 'Silver Ranger' : 'Hawkeye',
+    classArchetype: initialRole === 'admin' ? 'SUMMONER' : initialRole === 'scout' ? 'ARCHER' : 'ARCHER',
     levelNumber: 75,
     approxLevel: '75',
     gearSummary: 'A-Grade Armor & Weapon',
@@ -196,6 +185,7 @@ export function registerUser(data: {
     passwordHash,
     salt,
     role: initialRole,
+    permissions: getDefaultPermissions(initialRole),
     clanName: data.clanName?.trim() || 'Pay2KILL',
     discordTag: data.discordTag?.trim(),
     characters: [initialChar],
@@ -222,6 +212,7 @@ export function registerUser(data: {
       username: newUser.username,
       displayName: newUser.displayName,
       role: newUser.role,
+      permissions: newUser.permissions,
       clanName: newUser.clanName,
       discordTag: newUser.discordTag,
       characters: newUser.characters,
@@ -249,6 +240,9 @@ export function loginUser(
   }
 
   user.lastActiveAt = Date.now();
+  if (!user.permissions) {
+    user.permissions = getDefaultPermissions(user.role);
+  }
 
   const token = generateToken();
   dbState.sessions[token] = {
@@ -265,6 +259,7 @@ export function loginUser(
       username: user.username,
       displayName: user.displayName,
       role: user.role,
+      permissions: user.permissions,
       clanName: user.clanName,
       discordTag: user.discordTag,
       characters: user.characters || [],
@@ -286,12 +281,16 @@ export function getUserByToken(token: string): UserSessionData | null {
   if (!user) return null;
 
   user.lastActiveAt = Date.now();
+  if (!user.permissions) {
+    user.permissions = getDefaultPermissions(user.role);
+  }
 
   return {
     id: user.id,
     username: user.username,
     displayName: user.displayName,
     role: user.role,
+    permissions: user.permissions,
     clanName: user.clanName,
     discordTag: user.discordTag,
     characters: user.characters || [],
@@ -310,6 +309,7 @@ export function getAllUsers(): Array<Omit<AppUser, 'passwordHash' | 'salt'>> {
     username: u.username,
     displayName: u.displayName,
     role: u.role,
+    permissions: u.permissions || getDefaultPermissions(u.role),
     clanName: u.clanName,
     discordTag: u.discordTag,
     characters: u.characters || [],
@@ -325,7 +325,7 @@ export function updateUserRole(
   newRole: UserRole
 ): { success: boolean; error?: string } {
   const admin = dbState.users.find((u) => u.id === adminUserId);
-  if (!admin || admin.role !== 'admin') {
+  if (!admin || (admin.role !== 'admin' && !admin.permissions?.canManageUsers)) {
     return { success: false, error: 'Доступ разрешен только Лидеру Клана (Администратору)' };
   }
 
@@ -335,8 +335,61 @@ export function updateUserRole(
   }
 
   target.role = newRole;
+  target.permissions = getDefaultPermissions(newRole);
   persistUsers();
   return { success: true };
+}
+
+export function updateUserPermissions(
+  adminUserId: string,
+  targetUserId: string,
+  permissionsUpdate: Partial<UserPermissions>
+): { success: boolean; error?: string; updatedUser?: Omit<AppUser, 'passwordHash' | 'salt'> } {
+  const admin = dbState.users.find((u) => u.id === adminUserId);
+  if (!admin || (admin.role !== 'admin' && !admin.permissions?.canManageUsers)) {
+    return { success: false, error: 'Доступ разрешен только Лидеру Клана (Администратору)' };
+  }
+
+  const target = dbState.users.find((u) => u.id === targetUserId);
+  if (!target) {
+    return { success: false, error: 'Пользователь не найден' };
+  }
+
+  const currentPerms = target.permissions || getDefaultPermissions(target.role);
+  const updatedPerms: UserPermissions = {
+    ...currentPerms,
+    ...permissionsUpdate,
+  };
+
+  target.permissions = updatedPerms;
+
+  // Derive role
+  if (updatedPerms.canManageUsers) {
+    target.role = 'admin';
+  } else if (updatedPerms.canEditBosses) {
+    target.role = 'scout';
+  } else {
+    target.role = 'member';
+  }
+
+  persistUsers();
+
+  return {
+    success: true,
+    updatedUser: {
+      id: target.id,
+      username: target.username,
+      displayName: target.displayName,
+      role: target.role,
+      permissions: target.permissions,
+      clanName: target.clanName,
+      discordTag: target.discordTag,
+      characters: target.characters || [],
+      activeCharacterId: target.activeCharacterId,
+      createdAt: target.createdAt,
+      lastActiveAt: target.lastActiveAt,
+    },
+  };
 }
 
 export function updateUserCharacters(
@@ -384,7 +437,7 @@ export function deleteUser(
   targetUserId: string
 ): { success: boolean; error?: string } {
   const admin = dbState.users.find((u) => u.id === adminUserId);
-  if (!admin || admin.role !== 'admin') {
+  if (!admin || (admin.role !== 'admin' && !admin.permissions?.canManageUsers)) {
     return { success: false, error: 'Доступ разрешен только Лидеру Клана' };
   }
 
@@ -403,3 +456,4 @@ export function deleteUser(
   persistUsers();
   return { success: true };
 }
+

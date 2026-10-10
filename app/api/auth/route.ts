@@ -8,6 +8,7 @@ import {
   getUserByToken,
   getAllUsers,
   updateUserRole,
+  updateUserPermissions,
   updateUserCharacters,
   updateUserProfile,
   deleteUser,
@@ -118,7 +119,7 @@ export async function POST(req: NextRequest) {
     if (action === 'update_user_role') {
       const { token, targetUserId, newRole } = body;
       const user = getUserByToken(token);
-      if (!user || user.role !== 'admin') {
+      if (!user || (user.role !== 'admin' && !user.permissions?.canManageUsers)) {
         return NextResponse.json({ error: 'Доступ только для Лидера Клана (Администратора)' }, { status: 403 });
       }
 
@@ -129,6 +130,22 @@ export async function POST(req: NextRequest) {
 
       const users = getAllUsers();
       return NextResponse.json({ success: true, users });
+    }
+
+    if (action === 'update_user_permissions') {
+      const { token, targetUserId, permissions } = body;
+      const user = getUserByToken(token);
+      if (!user || (user.role !== 'admin' && !user.permissions?.canManageUsers)) {
+        return NextResponse.json({ error: 'Доступ только для Лидера Клана (Администратора)' }, { status: 403 });
+      }
+
+      const result = updateUserPermissions(user.id, targetUserId, permissions);
+      if (!result.success) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+
+      const users = getAllUsers();
+      return NextResponse.json({ success: true, users, updatedUser: result.updatedUser });
     }
 
     if (action === 'delete_user') {
