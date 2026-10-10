@@ -1,0 +1,159 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    --font-cinzel: 'Cinzel', serif;
+    --font-inter: 'Inter', sans-serif;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+  body {
+    background-color: #090b0e;
+    color: #e5e7eb;
+    font-family: var(--font-inter);
+    overscroll-behavior-y: none;
+  }
+  button, a {
+    touch-action: manipulation;
+  }
+  input, select, textarea {
+    font-size: 16px; /* Prevents auto-zoom on iOS devices */
+  }
+  @media (min-width: 640px) {
+    input, select, textarea {
+      font-size: 0.875rem; /* 14px on desktop/tablet */
+    }
+  }
+}
+
+/* Safe area padding utilities for mobile */
+.safe-area-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+.safe-area-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+}
+
+/* Hide scrollbar for clean horizontal swipes */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.font-cinzel {
+  font-family: var(--font-cinzel);
+}
+
+/* Custom MMORPG Dark Fantasy Aesthetics */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #fff3d1 0%, #d4af37 50%, #aa8222 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-border {
+  border-color: rgba(194, 163, 99, 0.25);
+}
+
+.gold-border-glow {
+  border-color: rgba(212, 175, 55, 0.5);
+  box-shadow: 0 0 12px rgba(194, 163, 99, 0.15);
+}
+
+.card-fantasy {
+  background: linear-gradient(180deg, rgba(22, 27, 38, 0.9) 0%, rgba(13, 16, 23, 0.95) 100%);
+  border: 1px solid rgba(194, 163, 99, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+}
+
+.card-fantasy:hover {
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+/* Role Color Themes */
+.role-tank-bg {
+  background-color: rgba(29, 78, 216, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+}
+
+.role-heal-bg {
+  background-color: rgba(21, 128, 61, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+}
+
+.role-dd-bg {
+  background-color: rgba(185, 28, 28, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0d1017;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3142;
+  border-radius: 3px;
+  border: 1px solid rgba(194, 163, 99, 0.2);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8c7241;
+}
+
+/* Boss Spawn Alert Gradual Pulsation (Smooth breathing glow instead of edge-to-edge transition) */
+@keyframes spawnGradualPulse {
+  0% {
+    background-color: rgba(245, 158, 11, 0.08);
+    box-shadow: inset 0 0 12px rgba(245, 158, 11, 0.25), 0 0 8px rgba(234, 88, 12, 0.2);
+    border-color: rgba(245, 158, 11, 0.45);
+  }
+  50% {
+    background-color: rgba(245, 158, 11, 0.28);
+    box-shadow: inset 0 0 24px rgba(245, 158, 11, 0.55), 0 0 18px rgba(249, 115, 22, 0.45);
+    border-color: rgba(250, 204, 21, 0.95);
+  }
+  100% {
+    background-color: rgba(245, 158, 11, 0.08);
+    box-shadow: inset 0 0 12px rgba(245, 158, 11, 0.25), 0 0 8px rgba(234, 88, 12, 0.2);
+    border-color: rgba(245, 158, 11, 0.45);
+  }
+}
+
+.spawn-alert-active {
+  position: relative;
+  animation: spawnGradualPulse 2.4s ease-in-out infinite !important;
+  border-color: rgba(250, 204, 21, 0.85) !important;
+}
+
+@keyframes innerAuraPulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.01);
+  }
+}
+
+.spawn-aura-pulse {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(250, 204, 21, 0.22) 0%, rgba(245, 158, 11, 0.12) 60%, transparent 100%);
+  animation: innerAuraPulse 2.4s ease-in-out infinite;
+  pointer-events: none;
+}

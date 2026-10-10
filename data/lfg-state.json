@@ -1,0 +1,85 @@
+{
+  "pinCode": "1111",
+  "adminPinCode": "1234",
+  "bossViewerPin": "1111",
+  "bossScoutPin": "1555",
+  "bossAdminPin": "1234",
+  "pinVersion": 5,
+  "lastUpdated": 1791388151386,
+  "clans": [
+    {
+      "id": "PAY2KILL",
+      "name": "Pay2KILL"
+    },
+    {
+      "id": "P2K_ACADEMY",
+      "name": "P2K_Academy"
+    },
+    {
+      "id": "P2K_FRIENDS",
+      "name": "P2K_Friends"
+    },
+    {
+      "id": "BLOODLINE",
+      "name": "Bloodline Alliance"
+    }
+  ],
+  "kbTopics": [
+    {
+      "id": "kb_1",
+      "title": "9-man Party Setups",
+      "subtitle": "Mage / Archer / Melee CP Formations",
+      "category": "party_comp",
+      "content": "1. Mage Party (9-man): 3 Mages (SH/SPS/Sorc/Necro) + Overlord/Warcryer + Bishop + Elven Elder + BD + SWS + Tank.\n2. Archer Party (9-man): 3 Archers (HE/PR/SR) + Warcryer + Bishop + Elven Elder + BD + SWS + Warlock/Tank.\n3. Melee / Destroyer Party (AoE): 2-3 Destroyers/Warlords + Warcryer + SE + Bishop + BD + SWS + Spoil."
+    },
+    {
+      "id": "kb_2",
+      "title": "Epic Boss Timers",
+      "subtitle": "Baium, Antharas, Valakas, Zaken Respawn",
+      "category": "epics",
+      "content": "• Baium: 5 days +- 8 hours. Quest: Blooded Fabric (TOI 14). Reqs: 4+ Archer/Mage Packs.\n• Antharas: 8 days +- 8 hours. Quest: Portal Stone (LOA). Reqs: Full Command Channel.\n• Valakas: 11 days +- 8 hours. Quest: Floating Stone (FOG). Reqs: Max Alliance CC.\n• Zaken: 2 days +- 4 hours. Quest: Devil's Isle Night Entrance. Reqs: 2 Destro packs."
+    },
+    {
+      "id": "kb_3",
+      "title": "AoE Farm Spots",
+      "subtitle": "Catacombs, IT, FOG, Stakato, Pagan",
+      "category": "aoe_spots",
+      "content": "• Catacombs (Witch / Dark Omen): Ancient Adena (AA) & Spoil B/A mats. Polearm Warlord/Destro + SE.\n• Imperial Tomb (IT) & Forge of Gods (FOG): Fast exp for Mage & Polearm packs. A-grade recipe drops."
+    },
+    {
+      "id": "kb_4",
+      "title": "PL Commands & Macros",
+      "subtitle": "In-game party & CC invite chat macros",
+      "category": "pl_commands",
+      "content": "/invite <Nickname> — Invite player to party\n/dismiss <Nickname> — Kick player from party\n/leave — Leave current party\n/channelinvite <Nickname> — Invite party to Command Channel (CC)"
+    }
+  ],
+  "charterRules": [
+    {
+      "id": "r_1",
+      "num": 1,
+      "title": "Закрытый доступ альянса",
+      "desc": "Передача PIN-кода LFG варам или сторонним игрокам строго запрещена. Сервис предназначен исключительно для альянса Pay2KILL."
+    },
+    {
+      "id": "r_2",
+      "num": 2,
+      "title": "Дисциплина в очереди LFG",
+      "desc": "Если вы отходите от компьютера (AFK) более чем на 15 минут, снимите заявку или используйте кнопку продления."
+    },
+    {
+      "id": "r_3",
+      "num": 3,
+      "title": "Авторитет ПЛ (Party Leader)",
+      "desc": "ПЛ самостоятельно формирует состав 9-man пати. Команды ПЛ-а во время захода на эпиков и осад выполняются без пререканий."
+    },
+    {
+      "id": "r_4",
+      "num": 4,
+      "title": "Дележ Дропа и Эпиков",
+      "desc": "Эпическая бижутерия (Баюм, Тарас, Валакас, Закен) распределяется через Руководство Альянса Pay2KILL."
+    }
+  ],
+  "queuePlayers": [],
+  "activeGroups": []
+}

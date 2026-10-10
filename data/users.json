@@ -1,0 +1,32 @@
+{
+  "users": [
+    {
+      "id": "usr_admin_muson",
+      "username": "muson",
+      "displayName": "Muson (КЛ)",
+      "passwordHash": "5c9520dcd0f59b06fd1fbb2d223ee4e7a415fe366970e36acb733b2d34637aec",
+      "salt": "d30449dfd2b101616d070515755d999f",
+      "role": "admin",
+      "clanName": "Pay2KILL",
+      "discordTag": "muson#0001",
+      "characters": [
+        {
+          "id": "char_muson_main",
+          "nickname": "Muson",
+          "className": "Warlock (Котовод)",
+          "classArchetype": "SUMMONER",
+          "levelNumber": 75,
+          "approxLevel": "75",
+          "gearSummary": "Avadon Robe Set + Homunculus (Acumen)",
+          "clanName": "Pay2KILL",
+          "isMain": true,
+          "createdAt": 1791478420242
+        }
+      ],
+      "activeCharacterId": "char_muson_main",
+      "createdAt": 1791478420242,
+      "lastActiveAt": 1791478420242
+    }
+  ],
+  "sessions": {}
+}
