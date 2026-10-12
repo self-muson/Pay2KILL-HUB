@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useBossTrackerStore } from '@/lib/boss-tracker-store';
 import { useL2SpotStore } from '@/lib/l2-spot-store';
+import { useAuthStore } from '@/lib/auth-store';
 import { audioManager } from '@/lib/audio-manager';
 import { CAMERA_ACCOUNTS } from '@/lib/camera-accounts-data';
 import { BossTrackerTribune } from './BossTrackerTribune';
@@ -40,6 +41,9 @@ interface BossTrackerAppProps {
   isNewBossModalOpen: boolean;
   setIsNewBossModalOpen: (val: boolean) => void;
 }
+
+// Track already-notified alert log IDs globally so sounds never loop or re-trigger repeatedly
+const globalSeenAlertLogIds = new Set<string>();
 
 export function BossTrackerApp({
   onSwitchToLfg,
@@ -87,24 +91,23 @@ export function BossTrackerApp({
     return () => clearInterval(timer);
   }, [recalculateAllPhases]);
 
-  // Fast server polling loop (every 2.5 seconds) for live multi-user synchronization
+  // Server polling loop (every 3 seconds) for multi-user fallback synchronization
   useEffect(() => {
-    const alertedBosses = new Set<string>();
-
     const poll = async () => {
       await useBossTrackerStore.getState().fetchServerBossState();
       const state = useBossTrackerStore.getState();
       const now = Date.now();
 
-      state.bosses.forEach((boss) => {
-        if (boss.spawnAlertUntil && boss.spawnAlertUntil > now) {
-          if (!alertedBosses.has(boss.id)) {
-            alertedBosses.add(boss.id);
-            audioManager.playSpawnAlertSound();
-            showToast(`🔥 ОПОВЕЩЕНИЕ В ПРЯМОМ ЭФИРЕ: ${boss.name} (${boss.level} ур.)!`);
-          }
-        } else {
-          alertedBosses.delete(boss.id);
+      // Check spawn alert logs for fresh alerts (created in the last 15 seconds)
+      const freshLogs = (state.spawnAlertLogs || []).filter(
+        (log) => log.status === 'ACTIVE' && now - log.timestamp < 15000
+      );
+
+      freshLogs.forEach((log) => {
+        if (!globalSeenAlertLogIds.has(log.id)) {
+          globalSeenAlertLogIds.add(log.id);
+          audioManager.playSpawnAlertSound();
+          showToast(`🔥 ОПОВЕЩЕНИЕ В ПРЯМОМ ЭФИРЕ: ${log.bossName} (${log.bossLevel} ур.)!`);
         }
       });
     };
@@ -112,44 +115,11 @@ export function BossTrackerApp({
     void poll();
     const pollInterval = setInterval(() => {
       void poll();
-    }, 2500);
+    }, 3000);
 
     return () => clearInterval(pollInterval);
   }, []);
 
-  // Continuous spectator heartbeat so every connected clan member appears on the tribune
-  useEffect(() => {
-    const sendHeartbeat = () => {
-      const state = useBossTrackerStore.getState();
-      if (!state.isPinVerified) return;
-
-      const { characters, activeCharacterId } = useL2SpotStore.getState();
-      const activeChar =
-        characters.find((c) => c.id === activeCharacterId) ||
-        characters.find((c) => c.isMain) ||
-        characters[0];
-
-      const authUser = (window as any).__p2k_current_user || null;
-      const nickname =
-        activeChar?.nickname ||
-        (typeof window !== 'undefined' && localStorage.getItem('tl_current_nickname')) ||
-        'Клан мембер';
-      const className = activeChar?.className || 'Watcher';
-      const level = activeChar?.levelNumber || 75;
-      const clanName = activeChar?.clanName || 'Pay2KILL';
-
-      void state.syncUserCharacterToSpectator({
-        nickname,
-        className,
-        level,
-        clanName,
-      });
-    };
-
-    sendHeartbeat();
-    const hbTimer = setInterval(sendHeartbeat, 10000);
-    return () => clearInterval(hbTimer);
-  }, []);
 
   // Real-time remote spawn alerts listener across tabs and spectators
   useEffect(() => {
@@ -162,35 +132,35 @@ export function BossTrackerApp({
         const state = useBossTrackerStore.getState();
         const target = state.bosses.find((b) => b.id === data.bossId);
         if (target) {
-          const currentFilter = state.filterLevel;
-          let shouldPlay = false;
-          if (currentFilter === 'ALL') shouldPlay = true;
-          else if (currentFilter === '20-29' && target.level >= 20 && target.level <= 29) shouldPlay = true;
-          else if (currentFilter === '30-39' && target.level >= 30 && target.level <= 39) shouldPlay = true;
-          else if (currentFilter === '40-49' && target.level >= 40 && target.level <= 49) shouldPlay = true;
-          else if (currentFilter === '50-56' && target.level >= 50 && target.level <= 56) shouldPlay = true;
-
-          if (shouldPlay) {
-            audioManager.playSpawnAlertSound();
-            const senderNick = data.pressedBy?.nickname ? ` от [${data.pressedBy.nickname}]` : '';
-            showToast(`🔥 ОПОВЕЩЕНИЕ: ${target.name} (${target.level} ур.)${senderNick}`);
-          }
+          audioManager.playSpawnAlertSound();
+          const senderNick = data.pressedBy?.nickname ? ` от [${data.pressedBy.nickname}]` : '';
+          showToast(`🔥 ОПОВЕЩЕНИЕ: ${target.name} (${target.level} ур.)${senderNick}`);
         }
       } else if (data && data.type === 'SPAWN_CANCELLED') {
+        audioManager.stopAllAlertSounds();
         const state = useBossTrackerStore.getState();
         const target = state.bosses.find((b) => b.id === data.bossId);
         if (target) {
-          showToast(`❌ Оповещение по ${target.name} отменено (${data.cancelledBy?.nickname || 'Скаут'})`);
+          showToast(`❌ Оповещение по боссу ${target.name} отменено`);
         }
       } else if (data && data.type === 'READY_CHECK_TRIGGERED') {
         const state = useBossTrackerStore.getState();
         const target = state.bosses.find((b) => b.id === data.bossId);
         if (target) {
           const spotter = target.assignedSpotter;
-          const mySpec = state.spectators.find((s) => s.id === state.mySpectatorId || s.isMe);
+          const authUser = useAuthStore.getState().user;
+          const { characters, activeCharacterId } = useL2SpotStore.getState();
+          const activeChar =
+            characters.find((c) => c.id === activeCharacterId) ||
+            characters.find((c) => c.isMain) ||
+            characters[0];
+
           const isMySpotter =
             spotter?.isMe ||
-            (spotter?.nickname && mySpec?.nickname === spotter.nickname);
+            (spotter?.nickname &&
+              (spotter.nickname.toLowerCase() === (authUser?.displayName || '').toLowerCase() ||
+                spotter.nickname.toLowerCase() === (authUser?.username || '').toLowerCase() ||
+                spotter.nickname.toLowerCase() === (activeChar?.nickname || '').toLowerCase()));
 
           if (isMySpotter) {
             audioManager.startReadyCheckRadio();
@@ -200,7 +170,7 @@ export function BossTrackerApp({
           }
         }
       } else if (data && data.type === 'READY_CHECK_CONFIRMED') {
-        audioManager.stopReadyCheckRadio();
+        audioManager.stopAllAlertSounds();
         const state = useBossTrackerStore.getState();
         const target = state.bosses.find((b) => b.id === data.bossId);
         if (target) {
@@ -209,7 +179,7 @@ export function BossTrackerApp({
       } else if (data && data.type === 'OCCUPANCY_CHANGED') {
         useBossTrackerStore.setState({ accountOccupancies: data.occupancies });
       } else if (data && data.type === 'FORCE_LOGOUT_ALL') {
-        useBossTrackerStore.getState().logoutPin();
+        useAuthStore.getState().logout();
         showToast('⚠️ Администратор сбросил все активные сессии клана.');
       }
     };

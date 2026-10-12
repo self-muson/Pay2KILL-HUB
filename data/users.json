@@ -33,12 +33,49 @@
         "canManageLfg": true,
         "canManageUsers": true
       }
+    },
+    {
+      "id": "usr_1791797214633_4efdfcbc",
+      "username": "testuser1",
+      "displayName": "HeroOne",
+      "passwordHash": "ffd6f2e26a1394ca3914b54ad3597b9765a66d2a7a201b2e83771cb4e75b76f2",
+      "salt": "131f660fe2116c7524e4086776e7e64a",
+      "role": "member",
+      "permissions": {
+        "canViewBosses": true,
+        "canEditBosses": false,
+        "canViewLfg": true,
+        "canManageLfg": false,
+        "canManageUsers": false
+      },
+      "clanName": "Pay2KILL",
+      "characters": [
+        {
+          "id": "char_usr_1791797214633_4efdfcbc_1",
+          "nickname": "HeroOne",
+          "className": "Hawkeye",
+          "classArchetype": "ARCHER",
+          "levelNumber": 75,
+          "approxLevel": "75",
+          "gearSummary": "A-Grade Armor & Weapon",
+          "clanName": "Pay2KILL",
+          "isMain": true,
+          "createdAt": 1791797214634
+        }
+      ],
+      "activeCharacterId": "char_usr_1791797214633_4efdfcbc_1",
+      "createdAt": 1791797214634,
+      "lastActiveAt": 1791797214634
     }
   ],
   "sessions": {
     "tok_4daa2ccc0cbefa0a05f54c04b945bb2c2ae72b5df3ac67d2": {
       "userId": "usr_admin_muson",
       "expiresAt": 1794219058771
+    },
+    "tok_818e60cda753d747eb923fa1e1dd6db2980a5e386cc70b21": {
+      "userId": "usr_1791797214633_4efdfcbc",
+      "expiresAt": 1794389214634
     }
   }
 }

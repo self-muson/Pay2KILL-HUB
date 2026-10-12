@@ -54,6 +54,7 @@ class AudioManager {
   private config: SoundConfig = DEFAULT_SOUND_CONFIG;
   private activeRadioAudio: HTMLAudioElement | null = null;
   private activeRadioAudios: HTMLAudioElement[] = [];
+  private activeAlertAudios: HTMLAudioElement[] = [];
   private isRadioActive: boolean = false;
   private radioInterval: any = null;
   private audioCtx: AudioContext | null = null;
@@ -291,11 +292,19 @@ class AudioManager {
       const audio = new Audio(source);
       audio.volume = Math.max(0, Math.min(1, effectiveVol));
       audio.currentTime = 0;
+      this.activeAlertAudios.push(audio);
+      audio.onended = () => {
+        this.activeAlertAudios = this.activeAlertAudios.filter((a) => a !== audio);
+      };
       const playPromise = audio.play();
       if (playPromise !== undefined) {
         playPromise.catch(() => {
           const fallback = new Audio('/sounds/rb-spawn.wav');
           fallback.volume = Math.max(0, Math.min(1, effectiveVol));
+          this.activeAlertAudios.push(fallback);
+          fallback.onended = () => {
+            this.activeAlertAudios = this.activeAlertAudios.filter((a) => a !== fallback);
+          };
           fallback.play().catch(() => {
             this.playSynthSpawnSound();
           });
@@ -407,6 +416,26 @@ class AudioManager {
       try {
         window.speechSynthesis.cancel();
       } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  public stopAllAlertSounds() {
+    this.stopReadyCheckRadio();
+
+    if (this.activeAlertAudios.length > 0) {
+      const copy = [...this.activeAlertAudios];
+      this.activeAlertAudios = [];
+      copy.forEach((audio) => {
+        this.stopAndUnloadAudio(audio);
+      });
+    }
+
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
         // ignore
       }
     }

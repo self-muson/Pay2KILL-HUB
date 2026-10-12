@@ -142,12 +142,36 @@ function loadPersistedState(): LfgState | null {
   return null;
 }
 
-let globalLfgState: LfgState = loadPersistedState() || { ...defaultInitialState };
+declare global {
+  // eslint-disable-next-line no-var
+  var __p2k_lfg_state: LfgState | undefined;
+}
+
+if (!globalThis.__p2k_lfg_state) {
+  globalThis.__p2k_lfg_state = loadPersistedState() || { ...defaultInitialState };
+}
+
+function getLfgStateRef(): LfgState {
+  if (!globalThis.__p2k_lfg_state) {
+    globalThis.__p2k_lfg_state = loadPersistedState() || { ...defaultInitialState };
+  }
+  return globalThis.__p2k_lfg_state;
+}
+
+const globalLfgState = new Proxy({} as LfgState, {
+  get(_target, prop) {
+    return (getLfgStateRef() as any)[prop];
+  },
+  set(_target, prop, value) {
+    (getLfgStateRef() as any)[prop] = value;
+    return true;
+  },
+});
 
 function persistState(): void {
   try {
     ensureDataDir();
-    const data = JSON.stringify(globalLfgState, null, 2);
+    const data = JSON.stringify(getLfgStateRef(), null, 2);
     try {
       fs.writeFileSync(DATA_FILE, data, 'utf8');
     } catch {
@@ -164,15 +188,14 @@ function persistState(): void {
 }
 
 export function getCleanedState(): LfgState {
+  const current = getLfgStateRef();
   const diskState = loadPersistedState();
   if (diskState) {
     if (
-      diskState.lastUpdated >= globalLfgState.lastUpdated ||
-      (diskState.pinVersion || 0) >= (globalLfgState.pinVersion || 0) ||
-      diskState.queuePlayers.length > 0 ||
-      diskState.activeGroups.length > 0
+      diskState.lastUpdated > current.lastUpdated ||
+      (diskState.pinVersion || 0) > (current.pinVersion || 0)
     ) {
-      globalLfgState = diskState;
+      globalThis.__p2k_lfg_state = diskState;
     }
   }
 

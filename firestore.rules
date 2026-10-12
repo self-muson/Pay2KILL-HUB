@@ -4,10 +4,16 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if true;
     }
-    match /presence/{userId} {
+    match /sessions/{sessionId} {
       allow read, write: if true;
     }
     match /tracker/{docId} {
+      allow read, write: if true;
+    }
+    match /lfg/{docId} {
+      allow read, write: if true;
+    }
+    match /system/{docId} {
       allow read, write: if true;
     }
     match /{document=**} {
@@ -15,3 +21,4 @@ service cloud.firestore {
     }
   }
 }
+

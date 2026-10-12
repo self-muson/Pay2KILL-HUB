@@ -5,8 +5,11 @@ import { TrackerBoss, TrackerRole, SpectatorUser, CameraAccountCharacter, SpawnA
 import { buildInitialBosses, calculateRespawnTimestamps, getBossCooldownRange } from './boss-tracker-data';
 import { AccountOccupancy, CAMERA_ACCOUNTS, CameraAccount, normalizeCamCode, CUSTOM_ACCOUNTS_STORAGE_KEY } from './camera-accounts-data';
 import { audioManager } from './audio-manager';
+import { db } from './firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 const ROLE_STORAGE_KEY = 'tl_alliance_role';
+
 const PIN_STORAGE_KEY = 'tl_alliance_pin_verified';
 const PIN_VERSION_KEY = 'tl_alliance_pin_version';
 const SELECTED_GROUP_STORAGE_KEY = 'p2k_selected_camera_group_v2';
@@ -24,6 +27,20 @@ const DEFAULT_PINS_CONFIG: RolePinsConfig = {
   adminPin: '1234',
   pinVersion: 1,
 };
+
+function getOrCreateSpectatorId(): string {
+  if (typeof window === 'undefined') return 'spec_server_init';
+  try {
+    let id = localStorage.getItem('tl_p2k_spectator_id_v2');
+    if (!id) {
+      id = 'spec_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+      localStorage.setItem('tl_p2k_spectator_id_v2', id);
+    }
+    return id;
+  } catch {
+    return 'spec_' + Math.random().toString(36).substring(2, 8);
+  }
+}
 
 const INITIAL_SPECTATORS: SpectatorUser[] = [];
 
@@ -117,6 +134,7 @@ interface BossTrackerState {
   selectedCameraGroup: string;
   setSelectedCameraGroup: (group: string) => void;
   hydrateFromStorage: () => void;
+  initRealtimeSync: () => void;
   fetchPinsConfigFromServer: () => Promise<RolePinsConfig | null>;
 }
 
@@ -127,7 +145,7 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
     isPinVerified: true,
     pinsConfig: DEFAULT_PINS_CONFIG,
     spectators: INITIAL_SPECTATORS,
-    mySpectatorId: 'my_spec_' + Math.random().toString(36).substring(2, 8),
+    mySpectatorId: getOrCreateSpectatorId(),
     filterLevel: 'ALL',
     filterPhase: 'ALL',
     searchQuery: '',
@@ -137,6 +155,80 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
     customAccounts: [],
     spawnAlertLogs: [],
     selectedCameraGroup: 'Qox',
+
+    initRealtimeSync: () => {
+      if (typeof window === 'undefined') return;
+      if ((window as any).__p2k_fs_sync_active) return;
+      (window as any).__p2k_fs_sync_active = true;
+
+      try {
+        const docRef = doc(db, 'tracker', 'current');
+        onSnapshot(
+          docRef,
+          (snap) => {
+            if (snap.exists()) {
+              const data = snap.data();
+              if (data && Array.isArray(data.bosses)) {
+                const initial = buildInitialBosses();
+                const mySpecId = get().mySpectatorId;
+
+                const merged = initial.map((initBoss) => {
+                  const sBoss = (data.bosses || []).find((b: TrackerBoss) => b.id === initBoss.id);
+                  if (sBoss) {
+                    return {
+                      ...initBoss,
+                      timeOfDeath: sBoss.timeOfDeath,
+                      timeOfDeathTimestamp: sBoss.timeOfDeathTimestamp,
+                      windowStart: sBoss.windowStart,
+                      windowEnd: sBoss.windowEnd,
+                      windowStartTimestamp: sBoss.windowStartTimestamp,
+                      windowEndTimestamp: sBoss.windowEndTimestamp,
+                      phase: sBoss.phase || 'NO_DATA',
+                      secondsUntilWindow: sBoss.secondsUntilWindow,
+                      secondsRemainingInWindow: sBoss.secondsRemainingInWindow,
+                      assignedSpotter: sBoss.assignedSpotter || null,
+                      spawnAlertUntil: sBoss.spawnAlertUntil,
+                      readyCheckUntil: sBoss.readyCheckUntil,
+                      readyCheckBy: sBoss.readyCheckBy,
+                      notes: sBoss.notes || initBoss.notes,
+                      name: sBoss.name || initBoss.name,
+                      camCode: sBoss.camCode || initBoss.camCode,
+                      selectedAuthorGroup: sBoss.selectedAuthorGroup || initBoss.selectedAuthorGroup,
+                      selectedAccountId: sBoss.selectedAccountId || initBoss.selectedAccountId,
+                      selectedCharacterName: sBoss.selectedCharacterName || initBoss.selectedCharacterName,
+                      selectedCamCode: sBoss.selectedCamCode || initBoss.selectedCamCode,
+                    };
+                  }
+                  return initBoss;
+                });
+
+                const customBosses = (data.bosses || []).filter(
+                  (b: TrackerBoss) => !initial.some((init) => init.id === b.id)
+                );
+
+                const rawSpectators: SpectatorUser[] = (data.spectators || []).map((s: SpectatorUser) => ({
+                  ...s,
+                  isMe: s.id === mySpecId,
+                }));
+
+                set({
+                  bosses: [...merged, ...customBosses],
+                  spectators: rawSpectators,
+                  accountOccupancies: data.accountOccupancies || {},
+                  customAccounts: data.customAccounts || [],
+                  spawnAlertLogs: data.spawnAlertLogs || [],
+                });
+              }
+            }
+          },
+          (err) => {
+            console.warn('Realtime Firestore sync listener error:', err);
+          }
+        );
+      } catch (err) {
+        console.warn('Failed to initialize Realtime Firestore sync:', err);
+      }
+    },
 
     fetchServerBossState: async () => {
       try {
@@ -163,8 +255,6 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
                   secondsRemainingInWindow: sBoss.secondsRemainingInWindow,
                   assignedSpotter: sBoss.assignedSpotter || null,
                   spawnAlertUntil: sBoss.spawnAlertUntil,
-                  lastAlertId: sBoss.lastAlertId,
-                  lastAlertTimestamp: sBoss.lastAlertTimestamp,
                   readyCheckUntil: sBoss.readyCheckUntil,
                   readyCheckBy: sBoss.readyCheckBy,
                   notes: sBoss.notes || initBoss.notes,
@@ -207,22 +297,17 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
       if (typeof window === 'undefined') return;
       try {
         let savedRole: TrackerRole = 'viewer';
-        let isSavedVerified = false;
 
-        const allianceVerified = localStorage.getItem(PIN_STORAGE_KEY) === 'true';
-        const allianceRole = localStorage.getItem(ROLE_STORAGE_KEY);
-
-        if (allianceVerified) {
-          isSavedVerified = true;
-          if (allianceRole === 'admin') savedRole = 'admin';
-          else if (allianceRole === 'scout') savedRole = 'scout';
-          else savedRole = 'viewer';
+        // Check auth user from localStorage first
+        const rawAuthUser = localStorage.getItem('tl_p2k_auth_user_v1');
+        if (rawAuthUser) {
+          try {
+            const parsedU = JSON.parse(rawAuthUser);
+            if (parsedU.role === 'admin') savedRole = 'admin';
+            else if (parsedU.role === 'scout') savedRole = 'scout';
+            else savedRole = 'viewer';
+          } catch {}
         }
-
-        // Clean up any legacy localStorage keys to prevent loop invalidations
-        localStorage.removeItem('p2k_boss_tracker_pin_v2');
-        localStorage.removeItem('p2k_boss_tracker_role_v2');
-        localStorage.removeItem('p2k_boss_tracker_pin_version_v2');
 
         const storedGroup = localStorage.getItem(SELECTED_GROUP_STORAGE_KEY) || 'Qox';
 
@@ -243,16 +328,16 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
           isMuted: audioManager.getIsMuted(),
         });
 
-        if (savedRole === 'admin') {
-          void get().fetchPinsConfigFromServer();
-        }
+        // Start real-time Firestore sync
+        get().initRealtimeSync();
 
-        // Trigger immediate fetch from server to get latest TODs, spotters, and spectators
+        // Fetch server state
         void get().fetchServerBossState();
       } catch (e) {
         console.error('Failed to hydrate tracker state', e);
       }
     },
+
 
     setSoundVolume: (vol: number) => {
       audioManager.setVolume(vol);
@@ -265,6 +350,15 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
     },
 
     triggerSpawnAlert: async (bossId, pressedBy) => {
+      // Optimistic update
+      set((state) => {
+        const updated = state.bosses.map((b) => {
+          if (b.id !== bossId) return b;
+          return { ...b, spawnAlertUntil: Date.now() + 600000 };
+        });
+        return { bosses: updated };
+      });
+
       try {
         const charData = pressedBy || {
           nickname: 'Скаут',
@@ -287,6 +381,17 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
     },
 
     cancelSpawnAlert: async (bossId, cancelledBy) => {
+      audioManager.stopAllAlertSounds();
+
+      // Optimistic update
+      set((state) => {
+        const updated = state.bosses.map((b) => {
+          if (b.id !== bossId) return b;
+          return { ...b, spawnAlertUntil: undefined };
+        });
+        return { bosses: updated };
+      });
+
       try {
         const res = await fetch('/api/bosses', {
           method: 'POST',
@@ -300,6 +405,7 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
         console.error(e);
       }
     },
+
 
     clearSpawnLogs: () => {
       set({ spawnAlertLogs: [] });
@@ -511,8 +617,42 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
     },
 
     setBossDeathNow: async (bossId: string, authorNick?: string) => {
+      const nowMs = Date.now();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const now = new Date(nowMs);
+      const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+      // Optimistic update: set TOD immediately in client state
+      set((state) => {
+        const target = state.bosses.find((b) => b.id === bossId);
+        if (!target) return state;
+        const range = getBossCooldownRange(target.level);
+        const startMs = nowMs + range.minCooldownHours * 3600 * 1000;
+        const endMs = nowMs + range.maxCooldownHours * 3600 * 1000;
+        const dStart = new Date(startMs);
+        const dEnd = new Date(endMs);
+        const wStart = `${pad(dStart.getHours())}:${pad(dStart.getMinutes())}`;
+        const wEnd = `${pad(dEnd.getHours())}:${pad(dEnd.getMinutes())}`;
+
+        const updatedBosses = state.bosses.map((b) => {
+          if (b.id !== bossId) return b;
+          return {
+            ...b,
+            timeOfDeath: timeStr,
+            timeOfDeathTimestamp: nowMs,
+            windowStart: wStart,
+            windowEnd: wEnd,
+            windowStartTimestamp: startMs,
+            windowEndTimestamp: endMs,
+            phase: 'WAITING_WINDOW' as const,
+            secondsUntilWindow: Math.floor((startMs - nowMs) / 1000),
+            secondsRemainingInWindow: Math.floor((endMs - nowMs) / 1000),
+          };
+        });
+        return { bosses: updatedBosses };
+      });
+
       try {
-        const nowMs = Date.now();
         const res = await fetch('/api/bosses', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -527,6 +667,45 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
     },
 
     setBossDeathCustom: async (bossId: string, todStr: string, authorNick?: string, todTimestamp?: number) => {
+      const deathMs = todTimestamp || Date.now();
+      const pad = (n: number) => String(n).padStart(2, '0');
+
+      // Optimistic update
+      set((state) => {
+        const target = state.bosses.find((b) => b.id === bossId);
+        if (!target) return state;
+        const range = getBossCooldownRange(target.level);
+        const startMs = deathMs + range.minCooldownHours * 3600 * 1000;
+        const endMs = deathMs + range.maxCooldownHours * 3600 * 1000;
+        const dStart = new Date(startMs);
+        const dEnd = new Date(endMs);
+        const wStart = `${pad(dStart.getHours())}:${pad(dStart.getMinutes())}`;
+        const wEnd = `${pad(dEnd.getHours())}:${pad(dEnd.getMinutes())}`;
+
+        const now = Date.now();
+        let phase: any = 'NO_DATA';
+        if (now < startMs) phase = 'WAITING_WINDOW';
+        else if (now >= startMs && now <= endMs) phase = 'WINDOW_OPEN';
+        else phase = 'WINDOW_EXPIRED';
+
+        const updatedBosses = state.bosses.map((b) => {
+          if (b.id !== bossId) return b;
+          return {
+            ...b,
+            timeOfDeath: todStr,
+            timeOfDeathTimestamp: deathMs,
+            windowStart: wStart,
+            windowEnd: wEnd,
+            windowStartTimestamp: startMs,
+            windowEndTimestamp: endMs,
+            phase,
+            secondsUntilWindow: Math.max(0, Math.floor((startMs - now) / 1000)),
+            secondsRemainingInWindow: Math.max(0, Math.floor((endMs - now) / 1000)),
+          };
+        });
+        return { bosses: updatedBosses };
+      });
+
       try {
         const res = await fetch('/api/bosses', {
           method: 'POST',
@@ -543,6 +722,31 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
 
     resetBoss: async (bossId: string) => {
       audioManager.stopReadyCheckRadio();
+
+      // Optimistic update
+      set((state) => {
+        const updatedBosses = state.bosses.map((b) => {
+          if (b.id !== bossId) return b;
+          return {
+            ...b,
+            timeOfDeath: undefined,
+            timeOfDeathTimestamp: undefined,
+            windowStart: undefined,
+            windowEnd: undefined,
+            windowStartTimestamp: undefined,
+            windowEndTimestamp: undefined,
+            phase: 'NO_DATA' as const,
+            secondsUntilWindow: undefined,
+            secondsRemainingInWindow: undefined,
+            assignedSpotter: null,
+            readyCheckUntil: undefined,
+            readyCheckBy: undefined,
+            spawnAlertUntil: undefined,
+          };
+        });
+        return { bosses: updatedBosses };
+      });
+
       try {
         const res = await fetch('/api/bosses', {
           method: 'POST',
@@ -556,6 +760,7 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
         console.error(e);
       }
     },
+
 
     recalculateAllPhases: () => {
       const now = Date.now();
@@ -638,6 +843,28 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
 
     occupySpot: async (bossId, char) => {
       audioManager.stopReadyCheckRadio();
+
+      // Optimistic update: instantly place character on the spot
+      set((state) => {
+        const updatedBosses = state.bosses.map((b) => {
+          if (b.id !== bossId) return b;
+          return {
+            ...b,
+            assignedSpotter: {
+              nickname: char.nickname,
+              className: char.className,
+              level: char.level,
+              clanName: char.clanName,
+              assignedAt: Date.now(),
+              isMe: true,
+            },
+            readyCheckUntil: undefined,
+            readyCheckBy: undefined,
+          };
+        });
+        return { bosses: updatedBosses };
+      });
+
       try {
         const res = await fetch('/api/bosses', {
           method: 'POST',
@@ -655,6 +882,7 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
         });
         const data = await res.json();
         if (!res.ok) {
+          await get().fetchServerBossState();
           return { success: false, error: data.error || 'Спот уже занят другим мембером' };
         }
         await get().fetchServerBossState();
@@ -666,6 +894,21 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
 
     leaveSpot: async (bossId, userNick) => {
       audioManager.stopReadyCheckRadio();
+
+      // Optimistic update: instantly vacate spot
+      set((state) => {
+        const updatedBosses = state.bosses.map((b) => {
+          if (b.id !== bossId) return b;
+          return {
+            ...b,
+            assignedSpotter: null,
+            readyCheckUntil: undefined,
+            readyCheckBy: undefined,
+          };
+        });
+        return { bosses: updatedBosses };
+      });
+
       try {
         const isScoutOrAdmin = get().role === 'scout' || get().role === 'admin';
         const res = await fetch('/api/bosses', {
@@ -685,6 +928,7 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
         console.error(e);
       }
     },
+
 
     updateBossDetails: async (bossId, updates) => {
       try {

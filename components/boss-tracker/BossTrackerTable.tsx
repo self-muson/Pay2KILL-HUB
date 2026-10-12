@@ -231,6 +231,18 @@ export function BossTrackerTable({
 
     triggerSpawnAlert(boss.id, userChar);
 
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const ch = new BroadcastChannel('p2k_boss_tracker_alerts_v1');
+        ch.postMessage({
+          type: 'BOSS_SPAWNED',
+          bossId: boss.id,
+          pressedBy: userChar,
+        });
+        ch.close();
+      } catch {}
+    }
+
     if (onShowToast) {
       onShowToast(`📢 ${userChar.nickname} (${role === 'admin' ? 'КЛ' : role === 'scout' ? 'Скаут' : 'Наблюдатель'}) оповестил о респе: ${boss.name}!`);
     }
@@ -242,13 +254,26 @@ export function BossTrackerTable({
       return;
     }
 
+    audioManager.stopAllAlertSounds();
     const mySpec = spectators.find((s) => s.id === mySpectatorId || s.isMe);
-    const cancellerName = mySpec?.nickname || (role === 'admin' ? 'КЛ (Админ)' : 'Скаут');
+    const cancellerName = authUser?.displayName || mySpec?.nickname || (role === 'admin' ? 'КЛ (Админ)' : 'Скаут');
 
     cancelSpawnAlert(boss.id, {
       nickname: cancellerName,
       role,
     });
+
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        const ch = new BroadcastChannel('p2k_boss_tracker_alerts_v1');
+        ch.postMessage({
+          type: 'SPAWN_CANCELLED',
+          bossId: boss.id,
+          cancelledBy: { nickname: cancellerName, role },
+        });
+        ch.close();
+      } catch {}
+    }
 
     if (onShowToast) {
       onShowToast(`❌ Оповещение по боссу ${boss.name} отменено [${cancellerName}]`);

@@ -2,49 +2,60 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "Registered clan member profile with permissions",
+      "description": "Registered clan member profile and auth data",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "username": { "type": "string" },
         "displayName": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "salt": { "type": "string" },
         "role": { "type": "string", "enum": ["admin", "scout", "member"] },
         "clanName": { "type": "string" },
         "discordTag": { "type": "string" },
+        "characters": { "type": "string" },
+        "activeCharacterId": { "type": "string" },
         "createdAt": { "type": "number" },
         "lastActiveAt": { "type": "number" }
       },
       "required": ["id", "username", "role"]
     },
-    "Presence": {
-      "title": "Presence",
-      "description": "Online logged-in spectator presence on the tribune",
+    "UserSession": {
+      "title": "UserSession",
+      "description": "Active user auth token session",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
-        "nickname": { "type": "string" },
-        "className": { "type": "string" },
-        "level": { "type": "number" },
-        "clanName": { "type": "string" },
-        "role": { "type": "string" },
-        "lastSeen": { "type": "number" }
+        "token": { "type": "string" },
+        "expiresAt": { "type": "number" },
+        "createdAt": { "type": "number" }
       },
-      "required": ["userId", "nickname", "lastSeen"]
+      "required": ["userId", "token", "expiresAt"]
     },
-    "BossState": {
-      "title": "BossState",
-      "description": "Boss respawn tracking status and timer data",
+    "BossStateCollection": {
+      "title": "BossStateCollection",
+      "description": "Global synchronized boss tracker state, spotters, and spectators",
       "type": "object",
       "properties": {
-        "bossId": { "type": "string" },
-        "phase": { "type": "string" },
-        "timeOfDeath": { "type": "string" },
-        "timeOfDeathTimestamp": { "type": "number" },
-        "selectedAccountId": { "type": "string" },
-        "selectedCharacterName": { "type": "string" },
-        "selectedCamCode": { "type": "string" }
+        "bosses": { "type": "string" },
+        "spectators": { "type": "string" },
+        "accountOccupancies": { "type": "string" },
+        "customAccounts": { "type": "string" },
+        "spawnAlertLogs": { "type": "string" },
+        "lastUpdated": { "type": "number" }
       },
-      "required": ["bossId"]
+      "required": ["lastUpdated"]
+    },
+    "LfgStateCollection": {
+      "title": "LfgStateCollection",
+      "description": "Active party queue and groups state",
+      "type": "object",
+      "properties": {
+        "queuePlayers": { "type": "string" },
+        "activeGroups": { "type": "string" },
+        "lastUpdated": { "type": "number" }
+      },
+      "required": ["lastUpdated"]
     }
   },
   "firestore": {
@@ -52,13 +63,18 @@
       "schema": "User",
       "description": "Clan members collection"
     },
-    "/presence/{userId}": {
-      "schema": "Presence",
-      "description": "Online logged-in spectators on the tribune"
+    "/sessions/{sessionId}": {
+      "schema": "UserSession",
+      "description": "Active login sessions"
     },
     "/tracker/{docId}": {
-      "schema": "BossState",
-      "description": "Shared boss tracker state and active alerts"
+      "schema": "BossStateCollection",
+      "description": "Epic boss tracker live sync state"
+    },
+    "/lfg/{docId}": {
+      "schema": "LfgStateCollection",
+      "description": "LFG parties and queue sync state"
     }
   }
 }
+

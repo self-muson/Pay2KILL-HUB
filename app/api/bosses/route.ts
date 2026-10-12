@@ -24,12 +24,15 @@ import {
   updateServerBossDetails,
   addServerBoss,
   deleteServerBoss,
+  syncBossStateWithFirestore,
 } from '@/lib/boss-server-store';
 
 export async function GET() {
+  await syncBossStateWithFirestore();
   const state = getBossState();
   return NextResponse.json(state);
 }
+
 
 export async function POST(req: NextRequest) {
   try {

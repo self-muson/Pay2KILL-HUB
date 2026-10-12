@@ -8,7 +8,32 @@ import { useBossTrackerStore } from './boss-tracker-store';
 import { useL2SpotStore } from './l2-spot-store';
 
 const TOKEN_KEY = 'tl_p2k_auth_token_v1';
+const USER_CACHE_KEY = 'tl_p2k_auth_user_v1';
 const TIMEZONE_KEY = 'p2k_user_timezone_v1';
+
+// Synchronously read cached user from localStorage on client
+function getInitialUser(): UserSessionData | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.id) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function getInitialToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
 
 interface AuthState {
   user: UserSessionData | null;
@@ -65,11 +90,14 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => {
+  const cachedUser = getInitialUser();
+  const cachedToken = getInitialToken();
+
   return {
-    user: null,
-    token: null,
+    user: cachedUser,
+    token: cachedToken,
     isLoading: false,
-    isInitialized: false,
+    isInitialized: Boolean(cachedUser && cachedToken),
     allUsers: [],
 
     timezoneId: DEFAULT_TIMEZONE_ID,
@@ -100,7 +128,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
       const storedToken = localStorage.getItem(TOKEN_KEY);
       if (!storedToken) {
-        set({ isInitialized: true });
+        set({ user: null, token: null, isInitialized: true });
         return;
       }
 
@@ -112,6 +140,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.user) {
+            localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.user));
+            (window as any).__p2k_current_user = data.user;
+
             set({ user: data.user, token: storedToken });
             // Sync with boss tracker role
             const roleStr = data.user.role;
@@ -129,14 +160,18 @@ export const useAuthStore = create<AuthState>((set, get) => {
             }
           } else {
             localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(USER_CACHE_KEY);
+            (window as any).__p2k_current_user = null;
             set({ user: null, token: null });
           }
-        } else {
+        } else if (res.status === 401) {
           localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(USER_CACHE_KEY);
+          (window as any).__p2k_current_user = null;
           set({ user: null, token: null });
         }
       } catch (e) {
-        console.error('Failed to initialize auth', e);
+        console.error('Failed to initialize auth (keeping offline cache)', e);
       } finally {
         set({ isLoading: false, isInitialized: true });
       }
@@ -154,6 +189,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
         if (res.ok && data.success && data.user) {
           if (typeof window !== 'undefined') {
             localStorage.setItem(TOKEN_KEY, data.user.token);
+            localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.user));
+            (window as any).__p2k_current_user = data.user;
           }
           set({ user: data.user, token: data.user.token, isAuthModalOpen: false });
 
@@ -211,6 +248,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
         if (res.ok && resData.success && resData.user) {
           if (typeof window !== 'undefined') {
             localStorage.setItem(TOKEN_KEY, resData.user.token);
+            localStorage.setItem(USER_CACHE_KEY, JSON.stringify(resData.user));
+            (window as any).__p2k_current_user = resData.user;
           }
           set({ user: resData.user, token: resData.user.token, isAuthModalOpen: false });
 
@@ -250,6 +289,8 @@ export const useAuthStore = create<AuthState>((set, get) => {
     logout: () => {
       if (typeof window !== 'undefined') {
         localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_CACHE_KEY);
+        (window as any).__p2k_current_user = null;
       }
       set({ user: null, token: null });
       useBossTrackerStore.getState().logoutPin();

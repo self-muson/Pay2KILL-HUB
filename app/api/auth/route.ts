@@ -6,7 +6,9 @@ import {
   registerUser,
   loginUser,
   getUserByToken,
+  getUserByTokenAsync,
   getAllUsers,
+  getAllUsersAsync,
   updateUserRole,
   updateUserPermissions,
   updateUserCharacters,
@@ -22,13 +24,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'No token provided' }, { status: 401 });
   }
 
-  const user = getUserByToken(token);
+  const user = await getUserByTokenAsync(token);
   if (!user) {
     return NextResponse.json({ error: 'Invalid or expired session' }, { status: 401 });
   }
 
   return NextResponse.json({ success: true, user });
 }
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -66,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'get_profile') {
       const { token } = body;
-      const user = getUserByToken(token);
+      const user = await getUserByTokenAsync(token);
       if (!user) {
         return NextResponse.json({ error: 'Сессия не найдена или истекла' }, { status: 401 });
       }
@@ -75,7 +78,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'save_characters') {
       const { token, characters, activeCharacterId } = body;
-      const user = getUserByToken(token);
+      const user = await getUserByTokenAsync(token);
       if (!user) {
         return NextResponse.json({ error: 'Необходима авторизация' }, { status: 401 });
       }
@@ -85,13 +88,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
 
-      const updated = getUserByToken(token);
+      const updated = await getUserByTokenAsync(token);
       return NextResponse.json({ success: true, user: updated });
     }
 
     if (action === 'update_profile') {
       const { token, displayName, clanName, discordTag } = body;
-      const user = getUserByToken(token);
+      const user = await getUserByTokenAsync(token);
       if (!user) {
         return NextResponse.json({ error: 'Необходима авторизация' }, { status: 401 });
       }
@@ -101,18 +104,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
 
-      const updated = getUserByToken(token);
+      const updated = await getUserByTokenAsync(token);
       return NextResponse.json({ success: true, user: updated });
     }
 
     if (action === 'get_all_users') {
       const { token } = body;
-      const user = getUserByToken(token);
+      const user = await getUserByTokenAsync(token);
       if (!user || user.role !== 'admin') {
         return NextResponse.json({ error: 'Доступ только для Лидера Клана (Администратора)' }, { status: 403 });
       }
 
-      const users = getAllUsers();
+      const users = await getAllUsersAsync();
       return NextResponse.json({ success: true, users });
     }
 

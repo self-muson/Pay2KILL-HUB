@@ -224,50 +224,29 @@ export function buildInitialBosses(): TrackerBoss[] {
     const minCooldownHours = range.minCooldownHours;
     const maxCooldownHours = range.maxCooldownHours;
 
-    let phase: BossPhase = 'NO_DATA';
-    let windowStart = undefined;
-    let windowEnd = undefined;
-    let windowStartTimestamp = undefined;
-    let windowEndTimestamp = undefined;
-    let timeOfDeathTimestamp = undefined;
-    let secondsUntilWindow = undefined;
-    let secondsRemainingInWindow = undefined;
-
-    if (raw.initialTod) {
-      const calc = calculateRespawnTimestamps(
-        raw.initialTod,
-        minCooldownHours,
-        maxCooldownHours
-      );
-      phase = calc.phase;
-      windowStart = calc.windowStart;
-      windowEnd = calc.windowEnd;
-      windowStartTimestamp = calc.windowStartTimestamp;
-      windowEndTimestamp = calc.windowEndTimestamp;
-      timeOfDeathTimestamp = calc.timeOfDeathTimestamp;
-      secondsUntilWindow = calc.secondsUntilWindow;
-      secondsRemainingInWindow = calc.secondsRemainingInWindow;
-    }
-
     return {
       id: raw.id,
       name: raw.name,
       level: raw.level,
       camCode: raw.camCode,
-      timeOfDeath: raw.initialTod,
-      timeOfDeathTimestamp,
-      windowStart,
-      windowEnd,
-      windowStartTimestamp,
-      windowEndTimestamp,
+      timeOfDeath: undefined,
+      timeOfDeathTimestamp: undefined,
+      windowStart: undefined,
+      windowEnd: undefined,
+      windowStartTimestamp: undefined,
+      windowEndTimestamp: undefined,
       minCooldownHours,
       maxCooldownHours,
-      phase,
-      secondsUntilWindow,
-      secondsRemainingInWindow,
+      phase: 'NO_DATA' as BossPhase,
+      secondsUntilWindow: undefined,
+      secondsRemainingInWindow: undefined,
       notes: raw.notes,
       link: raw.link,
       assignedSpotter: null,
+      spawnAlertUntil: undefined,
+      readyCheckUntil: undefined,
+      readyCheckBy: undefined,
     };
   });
 }
+

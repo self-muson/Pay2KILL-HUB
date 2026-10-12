@@ -3,6 +3,15 @@ import path from 'path';
 import crypto from 'crypto';
 import { UserCharacter } from './l2-spot-types';
 import { UserRole, AppUser, UserSessionData, UserPermissions, getDefaultPermissions } from './user-types';
+import {
+  saveUserToFirestore,
+  getUserFromFirestore,
+  getAllUsersFromFirestore,
+  saveSessionToFirestore,
+  getSessionFromFirestore,
+  deleteSessionFromFirestore,
+  deleteUserFromFirestore,
+} from './firestore-sync';
 
 export type { UserRole, AppUser, UserSessionData, UserPermissions };
 export { getDefaultPermissions };
@@ -16,10 +25,10 @@ interface UsersDatabase {
   sessions: Record<string, { userId: string; expiresAt: number }>;
 }
 
-let dbState: UsersDatabase = {
-  users: [],
-  sessions: {},
-};
+declare global {
+  // eslint-disable-next-line no-var
+  var __p2k_users_db_state: UsersDatabase | undefined;
+}
 
 function ensureDirSync(dir: string) {
   try {
@@ -31,22 +40,41 @@ function ensureDirSync(dir: string) {
   }
 }
 
-function persistUsers(): void {
+function persistUsers(
+  specificUser?: AppUser,
+  specificSession?: { token: string; userId: string; expiresAt: number }
+): void {
   try {
     ensureDirSync(DATA_DIR);
-    const jsonStr = JSON.stringify(dbState, null, 2);
+    const state = getUsersDbState();
+    const jsonStr = JSON.stringify(state, null, 2);
+    fs.writeFileSync(USERS_FILE, jsonStr, 'utf8');
+    fs.writeFileSync(BACKUP_FILE, jsonStr, 'utf8');
+  } catch {
     try {
-      fs.writeFileSync(USERS_FILE, jsonStr, 'utf8');
-    } catch {}
-    try {
-      fs.writeFileSync(BACKUP_FILE, jsonStr, 'utf8');
-    } catch {}
-  } catch (e) {
-    try {
-      fs.writeFileSync(BACKUP_FILE, JSON.stringify(dbState), 'utf8');
-    } catch {}
+      if (globalThis.__p2k_users_db_state) {
+        fs.writeFileSync(BACKUP_FILE, JSON.stringify(globalThis.__p2k_users_db_state), 'utf8');
+      }
+    } catch {
+      // ignore
+    }
   }
+
+  // Asynchronously persist to Cloud Firestore
+  try {
+    if (specificUser) {
+      void saveUserToFirestore(specificUser);
+    }
+    if (specificSession) {
+      void saveSessionToFirestore(
+        specificSession.token,
+        specificSession.userId,
+        specificSession.expiresAt
+      );
+    }
+  } catch {}
 }
+
 
 function hashPassword(password: string, salt: string): string {
   return crypto.createHmac('sha256', salt).update(password.trim()).digest('hex');
@@ -56,7 +84,7 @@ function generateToken(): string {
   return 'tok_' + crypto.randomBytes(24).toString('hex');
 }
 
-function loadUsers(): void {
+function loadUsers(): UsersDatabase {
   try {
     let raw = '';
     if (fs.existsSync(USERS_FILE)) {
@@ -67,18 +95,17 @@ function loadUsers(): void {
 
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.users) && parsed.users.length > 0) {
+      if (parsed && Array.isArray(parsed.users)) {
         // Backfill missing permissions for existing users
         const migratedUsers: AppUser[] = parsed.users.map((u: any) => ({
           ...u,
           permissions: u.permissions || getDefaultPermissions(u.role || 'member'),
         }));
 
-        dbState = {
+        return {
           users: migratedUsers,
           sessions: parsed.sessions || {},
         };
-        return;
       }
     }
   } catch (e) {
@@ -116,15 +143,44 @@ function loadUsers(): void {
     lastActiveAt: Date.now(),
   };
 
-  dbState = {
+  const initialDb: UsersDatabase = {
     users: [initialAdmin],
     sessions: {},
   };
-  persistUsers();
+
+  try {
+    ensureDirSync(DATA_DIR);
+    fs.writeFileSync(USERS_FILE, JSON.stringify(initialDb, null, 2), 'utf8');
+    fs.writeFileSync(BACKUP_FILE, JSON.stringify(initialDb, null, 2), 'utf8');
+  } catch {
+    // ignore
+  }
+
+  return initialDb;
 }
 
-// Initial bootstrap
-loadUsers();
+function getUsersDbState(): UsersDatabase {
+  if (!globalThis.__p2k_users_db_state) {
+    globalThis.__p2k_users_db_state = loadUsers();
+  }
+  return globalThis.__p2k_users_db_state;
+}
+
+// Proxy dbState directly to globalThis.__p2k_users_db_state
+const dbState = new Proxy({} as UsersDatabase, {
+  get(_target, prop) {
+    return (getUsersDbState() as any)[prop];
+  },
+  set(_target, prop, value) {
+    (getUsersDbState() as any)[prop] = value;
+    return true;
+  },
+});
+
+// Initialize on module load
+if (!globalThis.__p2k_users_db_state) {
+  globalThis.__p2k_users_db_state = loadUsers();
+}
 
 export function registerUser(data: {
   username: string;
@@ -134,8 +190,6 @@ export function registerUser(data: {
   discordTag?: string;
   inviteCode?: string;
 }): { success: boolean; user?: UserSessionData; error?: string } {
-  loadUsers();
-
   const cleanUsername = data.username.trim().toLowerCase();
   if (!cleanUsername || cleanUsername.length < 3) {
     return { success: false, error: 'Логин должен содержать минимум 3 символа' };
@@ -204,12 +258,13 @@ export function registerUser(data: {
 
   // Create session token
   const token = generateToken();
-  dbState.sessions[token] = {
+  const sessionData = {
     userId: newUserId,
     expiresAt: Date.now() + 30 * 24 * 3600 * 1000, // 30 days
   };
+  dbState.sessions[token] = sessionData;
 
-  persistUsers();
+  persistUsers(newUser, { token, ...sessionData });
 
   return {
     success: true,
@@ -232,8 +287,6 @@ export function loginUser(
   username: string,
   password: string
 ): { success: boolean; user?: UserSessionData; error?: string } {
-  loadUsers();
-
   const cleanUsername = username.trim().toLowerCase();
   const user = dbState.users.find((u) => u.username.toLowerCase() === cleanUsername);
 
@@ -253,12 +306,13 @@ export function loginUser(
   }
 
   const token = generateToken();
-  dbState.sessions[token] = {
+  const sessionData = {
     userId: user.id,
     expiresAt: Date.now() + 30 * 24 * 3600 * 1000,
   };
+  dbState.sessions[token] = sessionData;
 
-  persistUsers();
+  persistUsers(user, { token, ...sessionData });
 
   return {
     success: true,
@@ -278,13 +332,10 @@ export function loginUser(
 }
 
 export function getUserByToken(token: string): UserSessionData | null {
-  loadUsers();
-
   const session = dbState.sessions[token];
   if (!session) return null;
   if (Date.now() > session.expiresAt) {
     delete dbState.sessions[token];
-    persistUsers();
     return null;
   }
 
@@ -310,13 +361,77 @@ export function getUserByToken(token: string): UserSessionData | null {
   };
 }
 
+export async function getUserByTokenAsync(token: string): Promise<UserSessionData | null> {
+  const syncUser = getUserByToken(token);
+  if (syncUser) return syncUser;
+
+  // Cloud Run multi-instance check via Firestore
+  try {
+    const fsSession = await getSessionFromFirestore(token);
+    if (!fsSession) return null;
+
+    dbState.sessions[token] = {
+      userId: fsSession.userId,
+      expiresAt: fsSession.expiresAt,
+    };
+
+    let user = dbState.users.find((u) => u.id === fsSession.userId);
+    if (!user) {
+      const fsUser = await getUserFromFirestore(fsSession.userId);
+      if (fsUser) {
+        dbState.users.push(fsUser);
+        user = fsUser;
+      }
+    }
+
+    if (!user) return null;
+
+    user.lastActiveAt = Date.now();
+    if (!user.permissions) {
+      user.permissions = getDefaultPermissions(user.role);
+    }
+
+    return {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      role: user.role,
+      permissions: user.permissions,
+      clanName: user.clanName,
+      discordTag: user.discordTag,
+      characters: user.characters || [],
+      activeCharacterId: user.activeCharacterId,
+      token,
+    };
+  } catch (err) {
+    console.warn('Error in getUserByTokenAsync:', err);
+    return null;
+  }
+}
+
+export async function getAllUsersAsync(): Promise<Array<Omit<AppUser, 'passwordHash' | 'salt'>>> {
+  try {
+    const fsUsers = await getAllUsersFromFirestore();
+    if (fsUsers && fsUsers.length > 0) {
+      fsUsers.forEach((fu) => {
+        const idx = dbState.users.findIndex((u) => u.id === fu.id);
+        if (idx >= 0) {
+          dbState.users[idx] = { ...dbState.users[idx], ...fu };
+        } else {
+          dbState.users.push(fu);
+        }
+      });
+    }
+  } catch {}
+  return getAllUsers();
+}
+
+
 export function getUserById(userId: string): AppUser | undefined {
-  loadUsers();
   return dbState.users.find((u) => u.id === userId);
 }
 
 export function getAllUsers(): Array<Omit<AppUser, 'passwordHash' | 'salt'>> {
-  loadUsers();
   return dbState.users.map((u) => ({
     id: u.id,
     username: u.username,
@@ -337,8 +452,6 @@ export function updateUserRole(
   targetUserId: string,
   newRole: UserRole
 ): { success: boolean; error?: string } {
-  loadUsers();
-
   const admin = dbState.users.find((u) => u.id === adminUserId);
   if (!admin || (admin.role !== 'admin' && !admin.permissions?.canManageUsers)) {
     return { success: false, error: 'Доступ разрешен только Лидеру Клана (Администратору)' };
@@ -360,8 +473,6 @@ export function updateUserPermissions(
   targetUserId: string,
   permissionsUpdate: Partial<UserPermissions>
 ): { success: boolean; error?: string; updatedUser?: Omit<AppUser, 'passwordHash' | 'salt'> } {
-  loadUsers();
-
   const admin = dbState.users.find((u) => u.id === adminUserId);
   if (!admin || (admin.role !== 'admin' && !admin.permissions?.canManageUsers)) {
     return { success: false, error: 'Доступ разрешен только Лидеру Клана (Администратору)' };
@@ -414,8 +525,6 @@ export function updateUserCharacters(
   characters: UserCharacter[],
   activeCharacterId?: string
 ): { success: boolean; error?: string } {
-  loadUsers();
-
   const user = dbState.users.find((u) => u.id === userId);
   if (!user) {
     return { success: false, error: 'Пользователь не найден' };
@@ -437,8 +546,6 @@ export function updateUserProfile(
   userId: string,
   data: { displayName?: string; clanName?: string; discordTag?: string }
 ): { success: boolean; error?: string } {
-  loadUsers();
-
   const user = dbState.users.find((u) => u.id === userId);
   if (!user) {
     return { success: false, error: 'Пользователь не найден' };
@@ -457,8 +564,6 @@ export function deleteUser(
   adminUserId: string,
   targetUserId: string
 ): { success: boolean; error?: string } {
-  loadUsers();
-
   const admin = dbState.users.find((u) => u.id === adminUserId);
   if (!admin || (admin.role !== 'admin' && !admin.permissions?.canManageUsers)) {
     return { success: false, error: 'Доступ разрешен только Лидеру Клана' };
@@ -479,3 +584,4 @@ export function deleteUser(
   persistUsers();
   return { success: true };
 }
+
