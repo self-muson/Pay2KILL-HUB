@@ -163,6 +163,8 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
                   secondsRemainingInWindow: sBoss.secondsRemainingInWindow,
                   assignedSpotter: sBoss.assignedSpotter || null,
                   spawnAlertUntil: sBoss.spawnAlertUntil,
+                  lastAlertId: sBoss.lastAlertId,
+                  lastAlertTimestamp: sBoss.lastAlertTimestamp,
                   readyCheckUntil: sBoss.readyCheckUntil,
                   readyCheckBy: sBoss.readyCheckBy,
                   notes: sBoss.notes || initBoss.notes,

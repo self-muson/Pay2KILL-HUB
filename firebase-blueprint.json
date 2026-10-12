@@ -2,18 +2,34 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "Registered clan member profile",
+      "description": "Registered clan member profile with permissions",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "username": { "type": "string" },
-        "role": { "type": "string", "enum": ["admin", "scout", "spectator"] },
-        "clan": { "type": "string" },
-        "contact": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "scout", "member"] },
+        "clanName": { "type": "string" },
+        "discordTag": { "type": "string" },
         "createdAt": { "type": "number" },
-        "lastActive": { "type": "number" }
+        "lastActiveAt": { "type": "number" }
       },
       "required": ["id", "username", "role"]
+    },
+    "Presence": {
+      "title": "Presence",
+      "description": "Online logged-in spectator presence on the tribune",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "nickname": { "type": "string" },
+        "className": { "type": "string" },
+        "level": { "type": "number" },
+        "clanName": { "type": "string" },
+        "role": { "type": "string" },
+        "lastSeen": { "type": "number" }
+      },
+      "required": ["userId", "nickname", "lastSeen"]
     },
     "BossState": {
       "title": "BossState",
@@ -28,7 +44,7 @@
         "selectedCharacterName": { "type": "string" },
         "selectedCamCode": { "type": "string" }
       },
-      "required": ["bossId", "phase"]
+      "required": ["bossId"]
     }
   },
   "firestore": {
@@ -36,9 +52,13 @@
       "schema": "User",
       "description": "Clan members collection"
     },
-    "/bosses/{bossId}": {
+    "/presence/{userId}": {
+      "schema": "Presence",
+      "description": "Online logged-in spectators on the tribune"
+    },
+    "/tracker/{docId}": {
       "schema": "BossState",
-      "description": "Epic boss tracker states"
+      "description": "Shared boss tracker state and active alerts"
     }
   }
 }

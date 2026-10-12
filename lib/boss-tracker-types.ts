@@ -39,6 +39,8 @@ export interface TrackerBoss {
   link?: string;
   assignedSpotter?: BossSpotterInfo | null;
   spawnAlertUntil?: number; // timestamp when 10 min spawn alert ends
+  lastAlertId?: string; // unique ID of current/last spawn alert to prevent sound loops
+  lastAlertTimestamp?: number; // timestamp when spawn alert was pressed
   readyCheckUntil?: number; // timestamp when 10 min ready check ends
   readyCheckBy?: string;    // nickname of initiator
   lastReadyCheckTimestamp?: number; // timestamp when ready check was last triggered (for 10 min cooldown)

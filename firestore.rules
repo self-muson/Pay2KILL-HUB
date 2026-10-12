@@ -4,7 +4,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read, write: if true;
     }
-    match /bosses/{bossId} {
+    match /presence/{userId} {
+      allow read, write: if true;
+    }
+    match /tracker/{docId} {
       allow read, write: if true;
     }
     match /{document=**} {

@@ -11,7 +11,6 @@ import { buildInitialBosses, calculateRespawnTimestamps, getBossCooldownRange } 
 import {
   CameraAccount,
   AccountOccupancy,
-  CAMERA_ACCOUNTS,
   normalizeCamCode,
 } from './camera-accounts-data';
 
@@ -42,7 +41,7 @@ function ensureDirSync(dir: string) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-  } catch (e) {
+  } catch {
     // ignore
   }
 }
@@ -50,9 +49,13 @@ function ensureDirSync(dir: string) {
 function persistState() {
   try {
     ensureDirSync(DATA_DIR);
-    const dataStr = JSON.stringify(globalBossState);
-    fs.writeFileSync(DATA_FILE, dataStr, 'utf8');
-    fs.writeFileSync(BACKUP_FILE, dataStr, 'utf8');
+    const dataStr = JSON.stringify(globalBossState, null, 2);
+    try {
+      fs.writeFileSync(DATA_FILE, dataStr, 'utf8');
+    } catch {}
+    try {
+      fs.writeFileSync(BACKUP_FILE, dataStr, 'utf8');
+    } catch {}
   } catch (e) {
     try {
       fs.writeFileSync(BACKUP_FILE, JSON.stringify(globalBossState), 'utf8');
@@ -83,6 +86,8 @@ function loadPersistedState(): void {
               timeOfDeathTimestamp: saved.timeOfDeathTimestamp,
               assignedSpotter: saved.assignedSpotter || null,
               spawnAlertUntil: saved.spawnAlertUntil,
+              lastAlertId: saved.lastAlertId,
+              lastAlertTimestamp: saved.lastAlertTimestamp,
               readyCheckUntil: saved.readyCheckUntil,
               readyCheckBy: saved.readyCheckBy,
               notes: saved.notes || initBoss.notes,
@@ -102,9 +107,15 @@ function loadPersistedState(): void {
           (b: TrackerBoss) => !initial.some((init) => init.id === b.id)
         );
 
+        // Filter out spectators older than 45 seconds from loaded file
+        const now = Date.now();
+        const activeSpectators = Array.isArray(parsed.spectators)
+          ? (parsed.spectators as SpectatorUser[]).filter((s) => now - (s.lastActive || 0) < 45000)
+          : [];
+
         globalBossState = {
           bosses: [...mergedBosses, ...customBosses],
-          spectators: [],
+          spectators: activeSpectators,
           accountOccupancies: parsed.accountOccupancies || {},
           customAccounts: parsed.customAccounts || [],
           spawnAlertLogs: parsed.spawnAlertLogs || [],
@@ -127,7 +138,7 @@ function loadPersistedState(): void {
   };
 }
 
-// Load persisted state immediately on server startup
+// Initial bootstrap
 loadPersistedState();
 
 // Recalculate phases for all bosses based on current server time
@@ -147,6 +158,7 @@ function recalculateBosses(bosses: TrackerBoss[]): TrackerBoss[] {
 
     const spawnAlertUntil =
       boss.spawnAlertUntil && now > boss.spawnAlertUntil ? undefined : boss.spawnAlertUntil;
+    const lastAlertId = spawnAlertUntil ? boss.lastAlertId : undefined;
 
     if (!boss.timeOfDeath) {
       return {
@@ -160,6 +172,7 @@ function recalculateBosses(bosses: TrackerBoss[]): TrackerBoss[] {
         readyCheckUntil: rCheckUntil,
         readyCheckBy: rCheckBy,
         spawnAlertUntil,
+        lastAlertId,
       };
     }
 
@@ -185,20 +198,27 @@ function recalculateBosses(bosses: TrackerBoss[]): TrackerBoss[] {
       readyCheckUntil: rCheckUntil,
       readyCheckBy: rCheckBy,
       spawnAlertUntil,
+      lastAlertId,
     };
   });
 }
 
-// Clean up spectators that have not sent heartbeat in the last 45 seconds
-function cleanupSpectators(): void {
+// Clean up spectators that have not sent heartbeat in the last 35 seconds
+function cleanupSpectators(): boolean {
   const now = Date.now();
+  const initialLen = globalBossState.spectators.length;
   globalBossState.spectators = globalBossState.spectators.filter(
-    (s) => now - s.lastActive < 45000
+    (s) => now - (s.lastActive || 0) < 35000
   );
+  return globalBossState.spectators.length !== initialLen;
 }
 
 export function getBossState(): BossServerState {
-  cleanupSpectators();
+  loadPersistedState();
+  const cleaned = cleanupSpectators();
+  if (cleaned) {
+    persistState();
+  }
   globalBossState.bosses = recalculateBosses(globalBossState.bosses);
   return {
     ...globalBossState,
@@ -218,11 +238,12 @@ export function heartbeatSpectator(spectator: {
   clanName: string;
   role: 'VIEWER' | 'SPOTTER' | 'LEADER';
 }): void {
+  loadPersistedState();
   const now = Date.now();
   cleanupSpectators();
 
   const existingIdx = globalBossState.spectators.findIndex(
-    (s) => s.id === spectator.id || (s.nickname && s.nickname === spectator.nickname)
+    (s) => s.id === spectator.id || (s.nickname && s.nickname.toLowerCase() === spectator.nickname.toLowerCase())
   );
 
   if (existingIdx >= 0) {
@@ -240,11 +261,17 @@ export function heartbeatSpectator(spectator: {
   }
 
   globalBossState.lastUpdated = now;
+  persistState();
 }
 
-export function removeSpectator(id: string): void {
-  globalBossState.spectators = globalBossState.spectators.filter((s) => s.id !== id);
+export function removeSpectator(idOrNickname: string): void {
+  loadPersistedState();
+  const lower = idOrNickname.toLowerCase();
+  globalBossState.spectators = globalBossState.spectators.filter(
+    (s) => s.id !== idOrNickname && s.nickname.toLowerCase() !== lower
+  );
   globalBossState.lastUpdated = Date.now();
+  persistState();
 }
 
 export function setServerBossCamera(
@@ -256,6 +283,7 @@ export function setServerBossCamera(
     selectedCamCode?: string;
   }
 ): { success: boolean; boss?: TrackerBoss } {
+  loadPersistedState();
   const target = globalBossState.bosses.find((b) => b.id === bossId);
   if (!target) return { success: false };
 
@@ -275,6 +303,7 @@ export function setBossDeath(
   authorNick?: string,
   todTimestamp?: number
 ): { success: boolean; boss?: TrackerBoss; error?: string } {
+  loadPersistedState();
   const cleaned = todStr.trim();
   if (!cleaned && !todTimestamp) return { success: false, error: 'Не указано время TOD' };
 
@@ -282,17 +311,18 @@ export function setBossDeath(
   if (!target) return { success: false, error: 'Босс не найден' };
 
   const range = getBossCooldownRange(target.level);
+
   let deathMs: number;
-  let calcWindowStart: string;
-  let calcWindowEnd: string;
+  let calcWindowStart = '';
+  let calcWindowEnd = '';
 
   if (todTimestamp && !isNaN(todTimestamp)) {
     deathMs = todTimestamp;
     const pad = (n: number) => String(n).padStart(2, '0');
-    const dStart = new Date(deathMs + range.minCooldownHours * 3600 * 1000);
-    const dEnd = new Date(deathMs + range.maxCooldownHours * 3600 * 1000);
-    calcWindowStart = `${pad(dStart.getHours())}:${pad(dStart.getMinutes())}`;
-    calcWindowEnd = `${pad(dEnd.getHours())}:${pad(dEnd.getMinutes())}`;
+    const startD = new Date(deathMs + range.minCooldownHours * 3600 * 1000);
+    const endD = new Date(deathMs + range.maxCooldownHours * 3600 * 1000);
+    calcWindowStart = `${pad(startD.getHours())}:${pad(startD.getMinutes())}`;
+    calcWindowEnd = `${pad(endD.getHours())}:${pad(endD.getMinutes())}`;
   } else {
     const calc = calculateRespawnTimestamps(cleaned, range.minCooldownHours, range.maxCooldownHours);
     deathMs = calc.timeOfDeathTimestamp;
@@ -338,6 +368,7 @@ export function setBossDeath(
 }
 
 export function resetBossState(bossId: string): { success: boolean } {
+  loadPersistedState();
   const target = globalBossState.bosses.find((b) => b.id === bossId);
   if (target) {
     target.timeOfDeath = undefined;
@@ -353,6 +384,7 @@ export function resetBossState(bossId: string): { success: boolean } {
     target.readyCheckUntil = undefined;
     target.readyCheckBy = undefined;
     target.spawnAlertUntil = undefined;
+    target.lastAlertId = undefined;
     globalBossState.lastUpdated = Date.now();
     persistState();
   }
@@ -363,6 +395,7 @@ export function occupyBossSpot(
   bossId: string,
   spotter: BossSpotterInfo & { sessionId?: string }
 ): { success: boolean; error?: string; boss?: TrackerBoss } {
+  loadPersistedState();
   const target = globalBossState.bosses.find((b) => b.id === bossId);
   if (!target) return { success: false, error: 'Босс не найден' };
 
@@ -396,6 +429,7 @@ export function leaveBossSpot(
   userNick?: string,
   isScoutOrAdmin: boolean = false
 ): { success: boolean; error?: string } {
+  loadPersistedState();
   const target = globalBossState.bosses.find((b) => b.id === bossId);
   if (!target) return { success: false, error: 'Босс не найден' };
 
@@ -421,11 +455,15 @@ export function leaveBossSpot(
 export function triggerServerSpawnAlert(
   bossId: string,
   pressedBy: { nickname: string; className: string; level: number; clanName: string; role: TrackerRole }
-): { success: boolean; log?: SpawnAlertLogEntry } {
+): { success: boolean; log?: SpawnAlertLogEntry; alertId?: string } {
+  loadPersistedState();
   const target = globalBossState.bosses.find((b) => b.id === bossId);
   if (!target) return { success: false };
 
+  const alertId = `alert_${bossId}_${Date.now()}`;
   target.spawnAlertUntil = Date.now() + 600000; // 10 minutes
+  target.lastAlertId = alertId;
+  target.lastAlertTimestamp = Date.now();
 
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -433,7 +471,7 @@ export function triggerServerSpawnAlert(
   const dateFormatted = `${pad(now.getDate())}.${pad(now.getMonth() + 1)}`;
 
   const logEntry: SpawnAlertLogEntry = {
-    id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    id: alertId,
     bossId,
     bossName: target.name,
     bossLevel: target.level,
@@ -451,16 +489,18 @@ export function triggerServerSpawnAlert(
 
   globalBossState.lastUpdated = Date.now();
   persistState();
-  return { success: true, log: logEntry };
+  return { success: true, log: logEntry, alertId };
 }
 
 export function cancelServerSpawnAlert(
   bossId: string,
   cancelledBy: { nickname: string; role: TrackerRole }
 ): { success: boolean } {
+  loadPersistedState();
   const target = globalBossState.bosses.find((b) => b.id === bossId);
   if (target) {
     target.spawnAlertUntil = undefined;
+    target.lastAlertId = undefined;
     // Update logs
     globalBossState.spawnAlertLogs.forEach((log) => {
       if (log.bossId === bossId && log.status === 'ACTIVE') {
@@ -479,6 +519,7 @@ export function triggerServerReadyCheck(
   bossId: string,
   requestedBy: string
 ): { success: boolean; message?: string; error?: string } {
+  loadPersistedState();
   const target = globalBossState.bosses.find((b) => b.id === bossId);
   if (!target) return { success: false, error: 'Босс не найден' };
   if (!target.assignedSpotter) {
@@ -507,6 +548,7 @@ export function triggerServerReadyCheck(
 }
 
 export function confirmServerReadyCheck(bossId: string): { success: boolean } {
+  loadPersistedState();
   const target = globalBossState.bosses.find((b) => b.id === bossId);
   if (target) {
     target.readyCheckUntil = undefined;
@@ -522,6 +564,7 @@ export function occupyServerAccount(
   camCode: string,
   user: { nickname: string; className: string; level: number; clanName: string }
 ): { success: boolean } {
+  loadPersistedState();
   const normCam = normalizeCamCode(camCode);
   globalBossState.accountOccupancies[groupId] = {
     groupId,
@@ -542,6 +585,7 @@ export function occupyServerAccount(
 }
 
 export function releaseServerAccount(groupId: number): { success: boolean } {
+  loadPersistedState();
   delete globalBossState.accountOccupancies[groupId];
   globalBossState.lastUpdated = Date.now();
   persistState();
@@ -555,6 +599,7 @@ export function addServerCustomAccount(data: {
   password: string;
   characters: any[];
 }): { success: boolean; account: CameraAccount } {
+  loadPersistedState();
   const current = globalBossState.customAccounts;
   const newId = 100 + current.length + 1;
   const newAcc: CameraAccount = {
@@ -578,6 +623,7 @@ export function updateServerCustomAccount(
   groupId: number,
   data: Partial<CameraAccount>
 ): { success: boolean } {
+  loadPersistedState();
   const acc = globalBossState.customAccounts.find((a) => a.groupId === groupId);
   if (acc) {
     Object.assign(acc, data);
@@ -588,6 +634,7 @@ export function updateServerCustomAccount(
 }
 
 export function deleteServerCustomAccount(groupId: number): { success: boolean } {
+  loadPersistedState();
   globalBossState.customAccounts = globalBossState.customAccounts.filter(
     (a) => a.groupId !== groupId
   );
@@ -598,6 +645,7 @@ export function deleteServerCustomAccount(groupId: number): { success: boolean }
 }
 
 export function deleteServerAuthorGroup(groupName: string): { success: boolean } {
+  loadPersistedState();
   const toDelete = globalBossState.customAccounts.filter(
     (a) => a.authorGroup.toLowerCase() === groupName.toLowerCase()
   );
@@ -616,6 +664,7 @@ export function updateServerBossDetails(
   bossId: string,
   updates: { name: string; level: number; camCode?: string; notes?: string; link?: string }
 ): { success: boolean } {
+  loadPersistedState();
   const target = globalBossState.bosses.find((b) => b.id === bossId);
   if (target) {
     target.name = updates.name.trim();
@@ -641,6 +690,7 @@ export function addServerBoss(data: {
   notes?: string;
   link?: string;
 }): { success: boolean; boss: TrackerBoss } {
+  loadPersistedState();
   const range = getBossCooldownRange(data.level);
   const newBoss: TrackerBoss = {
     id: `custom_boss_${Date.now()}`,
@@ -662,6 +712,7 @@ export function addServerBoss(data: {
 }
 
 export function deleteServerBoss(bossId: string): { success: boolean } {
+  loadPersistedState();
   globalBossState.bosses = globalBossState.bosses.filter((b) => b.id !== bossId);
   globalBossState.lastUpdated = Date.now();
   persistState();
