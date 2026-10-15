@@ -66,6 +66,39 @@
       "activeCharacterId": "char_usr_1791797214633_4efdfcbc_1",
       "createdAt": 1791797214634,
       "lastActiveAt": 1791797214634
+    },
+    {
+      "id": "usr_1791972034036_18fda520",
+      "username": "scout_test_live",
+      "displayName": "TestScoutLive",
+      "passwordHash": "8fc42a67d893279c433f416a0e74a70fbdb69f69b3e12abd39c53aac239b5609",
+      "salt": "62cd99c355854d3e42b5c7b2b1d016ab",
+      "role": "member",
+      "permissions": {
+        "canViewBosses": true,
+        "canEditBosses": false,
+        "canViewLfg": true,
+        "canManageLfg": false,
+        "canManageUsers": false
+      },
+      "clanName": "Pay2KILL",
+      "characters": [
+        {
+          "id": "char_usr_1791972034036_18fda520_1",
+          "nickname": "TestScoutLive",
+          "className": "Hawkeye",
+          "classArchetype": "ARCHER",
+          "levelNumber": 75,
+          "approxLevel": "75",
+          "gearSummary": "A-Grade Armor & Weapon",
+          "clanName": "Pay2KILL",
+          "isMain": true,
+          "createdAt": 1791972034036
+        }
+      ],
+      "activeCharacterId": "char_usr_1791972034036_18fda520_1",
+      "createdAt": 1791972034036,
+      "lastActiveAt": 1791972042225
     }
   ],
   "sessions": {
@@ -76,6 +109,14 @@
     "tok_818e60cda753d747eb923fa1e1dd6db2980a5e386cc70b21": {
       "userId": "usr_1791797214633_4efdfcbc",
       "expiresAt": 1794389214634
+    },
+    "tok_db2dc995ec41eb94a4b4ed352ce8cae4c21fe65ecb3bdd1c": {
+      "userId": "usr_1791972034036_18fda520",
+      "expiresAt": 1794564034036
+    },
+    "tok_28279e91f62694a3cdcfa3f725a14f6ceb429a4fb37b9838": {
+      "userId": "usr_1791972034036_18fda520",
+      "expiresAt": 1794564042225
     }
   }
 }

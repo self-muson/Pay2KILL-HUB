@@ -171,35 +171,43 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
               if (data && Array.isArray(data.bosses)) {
                 const initial = buildInitialBosses();
                 const mySpecId = get().mySpectatorId;
+                const currentBosses = get().bosses.length > 0 ? get().bosses : initial;
 
                 const merged = initial.map((initBoss) => {
+                  const curr = currentBosses.find((b) => b.id === initBoss.id) || initBoss;
                   const sBoss = (data.bosses || []).find((b: TrackerBoss) => b.id === initBoss.id);
                   if (sBoss) {
+                    const deathMs = sBoss.timeOfDeathTimestamp || curr.timeOfDeathTimestamp;
+                    const tod = sBoss.timeOfDeath || curr.timeOfDeath;
+                    const spotter = sBoss.assignedSpotter !== undefined ? sBoss.assignedSpotter : curr.assignedSpotter;
+
                     return {
                       ...initBoss,
-                      timeOfDeath: sBoss.timeOfDeath,
-                      timeOfDeathTimestamp: sBoss.timeOfDeathTimestamp,
-                      windowStart: sBoss.windowStart,
-                      windowEnd: sBoss.windowEnd,
-                      windowStartTimestamp: sBoss.windowStartTimestamp,
-                      windowEndTimestamp: sBoss.windowEndTimestamp,
-                      phase: sBoss.phase || 'NO_DATA',
-                      secondsUntilWindow: sBoss.secondsUntilWindow,
-                      secondsRemainingInWindow: sBoss.secondsRemainingInWindow,
-                      assignedSpotter: sBoss.assignedSpotter || null,
-                      spawnAlertUntil: sBoss.spawnAlertUntil,
-                      readyCheckUntil: sBoss.readyCheckUntil,
-                      readyCheckBy: sBoss.readyCheckBy,
-                      notes: sBoss.notes || initBoss.notes,
-                      name: sBoss.name || initBoss.name,
-                      camCode: sBoss.camCode || initBoss.camCode,
-                      selectedAuthorGroup: sBoss.selectedAuthorGroup || initBoss.selectedAuthorGroup,
-                      selectedAccountId: sBoss.selectedAccountId || initBoss.selectedAccountId,
-                      selectedCharacterName: sBoss.selectedCharacterName || initBoss.selectedCharacterName,
-                      selectedCamCode: sBoss.selectedCamCode || initBoss.selectedCamCode,
+                      ...curr,
+                      ...sBoss,
+                      timeOfDeath: tod,
+                      timeOfDeathTimestamp: deathMs,
+                      windowStart: sBoss.windowStart || curr.windowStart,
+                      windowEnd: sBoss.windowEnd || curr.windowEnd,
+                      windowStartTimestamp: sBoss.windowStartTimestamp || curr.windowStartTimestamp,
+                      windowEndTimestamp: sBoss.windowEndTimestamp || curr.windowEndTimestamp,
+                      phase: sBoss.phase && sBoss.phase !== 'NO_DATA' ? sBoss.phase : curr.phase || 'NO_DATA',
+                      secondsUntilWindow: sBoss.secondsUntilWindow !== undefined ? sBoss.secondsUntilWindow : curr.secondsUntilWindow,
+                      secondsRemainingInWindow: sBoss.secondsRemainingInWindow !== undefined ? sBoss.secondsRemainingInWindow : curr.secondsRemainingInWindow,
+                      assignedSpotter: spotter,
+                      spawnAlertUntil: sBoss.spawnAlertUntil !== undefined ? sBoss.spawnAlertUntil : curr.spawnAlertUntil,
+                      readyCheckUntil: sBoss.readyCheckUntil !== undefined ? sBoss.readyCheckUntil : curr.readyCheckUntil,
+                      readyCheckBy: sBoss.readyCheckBy || curr.readyCheckBy,
+                      notes: sBoss.notes || curr.notes || initBoss.notes,
+                      name: sBoss.name || curr.name || initBoss.name,
+                      camCode: sBoss.camCode || curr.camCode || initBoss.camCode,
+                      selectedAuthorGroup: sBoss.selectedAuthorGroup || curr.selectedAuthorGroup || initBoss.selectedAuthorGroup,
+                      selectedAccountId: sBoss.selectedAccountId || curr.selectedAccountId || initBoss.selectedAccountId,
+                      selectedCharacterName: sBoss.selectedCharacterName || curr.selectedCharacterName || initBoss.selectedCharacterName,
+                      selectedCamCode: sBoss.selectedCamCode || curr.selectedCamCode || initBoss.selectedCamCode,
                     };
                   }
-                  return initBoss;
+                  return curr;
                 });
 
                 const customBosses = (data.bosses || []).filter(
@@ -238,35 +246,43 @@ export const useBossTrackerStore = create<BossTrackerState>((set, get) => {
           if (data && Array.isArray(data.bosses)) {
             const initial = buildInitialBosses();
             const mySpecId = get().mySpectatorId;
+            const currentBosses = get().bosses.length > 0 ? get().bosses : initial;
 
             const merged = initial.map((initBoss) => {
+              const curr = currentBosses.find((b) => b.id === initBoss.id) || initBoss;
               const sBoss = (data.bosses || []).find((b: TrackerBoss) => b.id === initBoss.id);
               if (sBoss) {
+                const deathMs = sBoss.timeOfDeathTimestamp || curr.timeOfDeathTimestamp;
+                const tod = sBoss.timeOfDeath || curr.timeOfDeath;
+                const spotter = sBoss.assignedSpotter !== undefined ? sBoss.assignedSpotter : curr.assignedSpotter;
+
                 return {
                   ...initBoss,
-                  timeOfDeath: sBoss.timeOfDeath,
-                  timeOfDeathTimestamp: sBoss.timeOfDeathTimestamp,
-                  windowStart: sBoss.windowStart,
-                  windowEnd: sBoss.windowEnd,
-                  windowStartTimestamp: sBoss.windowStartTimestamp,
-                  windowEndTimestamp: sBoss.windowEndTimestamp,
-                  phase: sBoss.phase,
-                  secondsUntilWindow: sBoss.secondsUntilWindow,
-                  secondsRemainingInWindow: sBoss.secondsRemainingInWindow,
-                  assignedSpotter: sBoss.assignedSpotter || null,
-                  spawnAlertUntil: sBoss.spawnAlertUntil,
-                  readyCheckUntil: sBoss.readyCheckUntil,
-                  readyCheckBy: sBoss.readyCheckBy,
-                  notes: sBoss.notes || initBoss.notes,
-                  name: sBoss.name || initBoss.name,
-                  camCode: sBoss.camCode || initBoss.camCode,
-                  selectedAuthorGroup: sBoss.selectedAuthorGroup || initBoss.selectedAuthorGroup,
-                  selectedAccountId: sBoss.selectedAccountId || initBoss.selectedAccountId,
-                  selectedCharacterName: sBoss.selectedCharacterName || initBoss.selectedCharacterName,
-                  selectedCamCode: sBoss.selectedCamCode || initBoss.selectedCamCode,
+                  ...curr,
+                  ...sBoss,
+                  timeOfDeath: tod,
+                  timeOfDeathTimestamp: deathMs,
+                  windowStart: sBoss.windowStart || curr.windowStart,
+                  windowEnd: sBoss.windowEnd || curr.windowEnd,
+                  windowStartTimestamp: sBoss.windowStartTimestamp || curr.windowStartTimestamp,
+                  windowEndTimestamp: sBoss.windowEndTimestamp || curr.windowEndTimestamp,
+                  phase: sBoss.phase && sBoss.phase !== 'NO_DATA' ? sBoss.phase : curr.phase || 'NO_DATA',
+                  secondsUntilWindow: sBoss.secondsUntilWindow !== undefined ? sBoss.secondsUntilWindow : curr.secondsUntilWindow,
+                  secondsRemainingInWindow: sBoss.secondsRemainingInWindow !== undefined ? sBoss.secondsRemainingInWindow : curr.secondsRemainingInWindow,
+                  assignedSpotter: spotter,
+                  spawnAlertUntil: sBoss.spawnAlertUntil !== undefined ? sBoss.spawnAlertUntil : curr.spawnAlertUntil,
+                  readyCheckUntil: sBoss.readyCheckUntil !== undefined ? sBoss.readyCheckUntil : curr.readyCheckUntil,
+                  readyCheckBy: sBoss.readyCheckBy || curr.readyCheckBy,
+                  notes: sBoss.notes || curr.notes || initBoss.notes,
+                  name: sBoss.name || curr.name || initBoss.name,
+                  camCode: sBoss.camCode || curr.camCode || initBoss.camCode,
+                  selectedAuthorGroup: sBoss.selectedAuthorGroup || curr.selectedAuthorGroup || initBoss.selectedAuthorGroup,
+                  selectedAccountId: sBoss.selectedAccountId || curr.selectedAccountId || initBoss.selectedAccountId,
+                  selectedCharacterName: sBoss.selectedCharacterName || curr.selectedCharacterName || initBoss.selectedCharacterName,
+                  selectedCamCode: sBoss.selectedCamCode || curr.selectedCamCode || initBoss.selectedCamCode,
                 };
               }
-              return initBoss;
+              return curr;
             });
 
             const customBosses = (data.bosses || []).filter(

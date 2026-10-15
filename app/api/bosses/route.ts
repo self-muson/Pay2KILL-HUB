@@ -25,6 +25,7 @@ import {
   addServerBoss,
   deleteServerBoss,
   syncBossStateWithFirestore,
+  persistStateAsync,
 } from '@/lib/boss-server-store';
 
 export async function GET() {
@@ -32,7 +33,6 @@ export async function GET() {
   const state = getBossState();
   return NextResponse.json(state);
 }
-
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
       const { spectator } = body;
       if (spectator && spectator.nickname) {
         heartbeatSpectator(spectator);
+        await persistStateAsync();
       }
       return NextResponse.json({ success: true, state: getBossState() });
     }
@@ -51,6 +52,7 @@ export async function POST(req: NextRequest) {
       const { spectatorId } = body;
       if (spectatorId) {
         removeSpectator(spectatorId);
+        await persistStateAsync();
       }
       return NextResponse.json({ success: true, state: getBossState() });
     }
@@ -62,24 +64,28 @@ export async function POST(req: NextRequest) {
       const now = new Date(nowMs);
       const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
       const result = setBossDeath(bossId, timeStr, authorNick, nowMs);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'set_tod_custom') {
       const { bossId, todStr, authorNick, todTimestamp } = body;
       const result = setBossDeath(bossId, todStr, authorNick, todTimestamp);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'set_boss_camera') {
       const { bossId, data } = body;
       const result = setServerBossCamera(bossId, data || {});
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'reset_boss') {
       const { bossId } = body;
       const result = resetBossState(bossId);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
@@ -92,24 +98,28 @@ export async function POST(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
+      await persistStateAsync();
       return NextResponse.json({ success: true, boss: result.boss, state: getBossState() });
     }
 
     if (action === 'leave_spot') {
       const { bossId, userNick, isScoutOrAdmin } = body;
       const result = leaveBossSpot(bossId, userNick, isScoutOrAdmin);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'trigger_spawn_alert') {
       const { bossId, pressedBy } = body;
       const result = triggerServerSpawnAlert(bossId, pressedBy);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'cancel_spawn_alert') {
       const { bossId, cancelledBy } = body;
       const result = cancelServerSpawnAlert(bossId, cancelledBy);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
@@ -119,66 +129,77 @@ export async function POST(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'confirm_ready_check') {
       const { bossId } = body;
       const result = confirmServerReadyCheck(bossId);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'occupy_account') {
       const { groupId, camCode, user } = body;
       const result = occupyServerAccount(groupId, camCode, user);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'release_account') {
       const { groupId } = body;
       const result = releaseServerAccount(groupId);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'add_custom_account') {
       const { accountData } = body;
       const result = addServerCustomAccount(accountData);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'update_custom_account') {
       const { groupId, accountData } = body;
       const result = updateServerCustomAccount(groupId, accountData);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'delete_custom_account') {
       const { groupId } = body;
       const result = deleteServerCustomAccount(groupId);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'delete_author_group') {
       const { groupName } = body;
       const result = deleteServerAuthorGroup(groupName);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'update_boss_details') {
       const { bossId, updates } = body;
       const result = updateServerBossDetails(bossId, updates);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'add_boss') {
       const { bossData } = body;
       const result = addServerBoss(bossData);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 
     if (action === 'delete_boss') {
       const { bossId } = body;
       const result = deleteServerBoss(bossId);
+      await persistStateAsync();
       return NextResponse.json({ ...result, state: getBossState() });
     }
 

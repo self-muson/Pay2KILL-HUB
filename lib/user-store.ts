@@ -40,39 +40,51 @@ function ensureDirSync(dir: string) {
   }
 }
 
-function persistUsers(
+export async function persistUsersAsync(
   specificUser?: AppUser,
   specificSession?: { token: string; userId: string; expiresAt: number }
-): void {
+): Promise<void> {
   try {
     ensureDirSync(DATA_DIR);
     const state = getUsersDbState();
     const jsonStr = JSON.stringify(state, null, 2);
-    fs.writeFileSync(USERS_FILE, jsonStr, 'utf8');
+    // Write to /tmp/ first (ephemeral safe)
     fs.writeFileSync(BACKUP_FILE, jsonStr, 'utf8');
-  } catch {
+    // Only write to USERS_FILE if directory exists
     try {
-      if (globalThis.__p2k_users_db_state) {
-        fs.writeFileSync(BACKUP_FILE, JSON.stringify(globalThis.__p2k_users_db_state), 'utf8');
-      }
-    } catch {
-      // ignore
-    }
+      fs.writeFileSync(USERS_FILE, jsonStr, 'utf8');
+    } catch {}
+  } catch {
+    // ignore
   }
 
-  // Asynchronously persist to Cloud Firestore
+  // Await Firestore saves so Cloud Run does not freeze container before persistence completes
   try {
     if (specificUser) {
-      void saveUserToFirestore(specificUser);
+      await saveUserToFirestore(specificUser);
     }
+  } catch (e) {
+    console.warn('saveUserToFirestore error:', e);
+  }
+
+  try {
     if (specificSession) {
-      void saveSessionToFirestore(
+      await saveSessionToFirestore(
         specificSession.token,
         specificSession.userId,
         specificSession.expiresAt
       );
     }
-  } catch {}
+  } catch (e) {
+    console.warn('saveSessionToFirestore error:', e);
+  }
+}
+
+function persistUsers(
+  specificUser?: AppUser,
+  specificSession?: { token: string; userId: string; expiresAt: number }
+): void {
+  void persistUsersAsync(specificUser, specificSession);
 }
 
 
@@ -583,5 +595,101 @@ export function deleteUser(
 
   persistUsers();
   return { success: true };
+}
+
+export async function registerUserAsync(data: {
+  username: string;
+  password: string;
+  displayName?: string;
+  clanName?: string;
+  discordTag?: string;
+  inviteCode?: string;
+}): Promise<{ success: boolean; user?: UserSessionData; error?: string }> {
+  const result = registerUser(data);
+  if (result.success && result.user) {
+    const userObj = dbState.users.find((u) => u.id === result.user!.id);
+    const sessionObj = result.user.token
+      ? { token: result.user.token, userId: result.user.id, expiresAt: Date.now() + 30 * 24 * 3600 * 1000 }
+      : undefined;
+    await persistUsersAsync(userObj, sessionObj);
+  }
+  return result;
+}
+
+export async function loginUserAsync(
+  username: string,
+  password: string
+): Promise<{ success: boolean; user?: UserSessionData; error?: string }> {
+  const result = loginUser(username, password);
+  if (result.success && result.user) {
+    const userObj = dbState.users.find((u) => u.id === result.user!.id);
+    const sessionObj = result.user.token
+      ? { token: result.user.token, userId: result.user.id, expiresAt: Date.now() + 30 * 24 * 3600 * 1000 }
+      : undefined;
+    await persistUsersAsync(userObj, sessionObj);
+  }
+  return result;
+}
+
+export async function updateUserRoleAsync(
+  adminUserId: string,
+  targetUserId: string,
+  newRole: UserRole
+): Promise<{ success: boolean; error?: string }> {
+  const res = updateUserRole(adminUserId, targetUserId, newRole);
+  if (res.success) {
+    const updated = dbState.users.find((u) => u.id === targetUserId);
+    await persistUsersAsync(updated);
+  }
+  return res;
+}
+
+export async function updateUserPermissionsAsync(
+  adminUserId: string,
+  targetUserId: string,
+  permissionsUpdate: Partial<UserPermissions>
+): Promise<{ success: boolean; error?: string; updatedUser?: Omit<AppUser, 'passwordHash' | 'salt'> }> {
+  const res = updateUserPermissions(adminUserId, targetUserId, permissionsUpdate);
+  if (res.success && res.updatedUser) {
+    const updated = dbState.users.find((u) => u.id === targetUserId);
+    await persistUsersAsync(updated);
+  }
+  return res;
+}
+
+export async function updateUserCharactersAsync(
+  userId: string,
+  characters: UserCharacter[],
+  activeCharacterId?: string
+): Promise<{ success: boolean; error?: string }> {
+  const res = updateUserCharacters(userId, characters, activeCharacterId);
+  if (res.success) {
+    const updated = dbState.users.find((u) => u.id === userId);
+    await persistUsersAsync(updated);
+  }
+  return res;
+}
+
+export async function updateUserProfileAsync(
+  userId: string,
+  data: { displayName?: string; clanName?: string; discordTag?: string }
+): Promise<{ success: boolean; error?: string }> {
+  const res = updateUserProfile(userId, data);
+  if (res.success) {
+    const updated = dbState.users.find((u) => u.id === userId);
+    await persistUsersAsync(updated);
+  }
+  return res;
+}
+
+export async function deleteUserAsync(
+  adminUserId: string,
+  targetUserId: string
+): Promise<{ success: boolean; error?: string }> {
+  const res = deleteUser(adminUserId, targetUserId);
+  if (res.success) {
+    await persistUsersAsync();
+  }
+  return res;
 }
 

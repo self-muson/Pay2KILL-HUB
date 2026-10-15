@@ -275,7 +275,7 @@ class AudioManager {
     }
   }
 
-  // Boss Spawn Alert Audio (unlimited clicks, zero delay, user configured sound)
+  // Boss Spawn Alert Audio (clean playback with instant cancellation)
   public playSpawnAlertSound(customSrc?: string, customVol?: number) {
     if (this.isMuted && !customSrc) return;
     if (!this.config.spawnSoundEnabled && !customSrc) return;
@@ -298,16 +298,25 @@ class AudioManager {
       };
       const playPromise = audio.play();
       if (playPromise !== undefined) {
-        playPromise.catch(() => {
-          const fallback = new Audio('/sounds/rb-spawn.wav');
-          fallback.volume = Math.max(0, Math.min(1, effectiveVol));
-          this.activeAlertAudios.push(fallback);
-          fallback.onended = () => {
-            this.activeAlertAudios = this.activeAlertAudios.filter((a) => a !== fallback);
-          };
-          fallback.play().catch(() => {
-            this.playSynthSpawnSound();
-          });
+        playPromise.catch((err) => {
+          // If aborted or paused by cancellation, do not trigger fallback audio
+          if (err && (err.name === 'AbortError' || String(err).includes('interrupted') || String(err).includes('pause'))) {
+            return;
+          }
+          // Only attempt fallback if audio was not intentionally stopped
+          if (this.activeAlertAudios.includes(audio)) {
+            try {
+              const fallback = new Audio('/sounds/rb-spawn.wav');
+              fallback.volume = Math.max(0, Math.min(1, effectiveVol));
+              this.activeAlertAudios.push(fallback);
+              fallback.onended = () => {
+                this.activeAlertAudios = this.activeAlertAudios.filter((a) => a !== fallback);
+              };
+              fallback.play().catch(() => {});
+            } catch {
+              // ignore
+            }
+          }
         });
       }
     } catch (e) {

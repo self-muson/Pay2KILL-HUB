@@ -28,20 +28,20 @@ export function BossTrackerTribune() {
   const { user } = useAuthStore();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Sync user's active character or account name to the tribune with continuous heartbeat
+  const active =
+    characters.find((c) => c.id === activeCharacterId) ||
+    characters.find((c) => c.isMain) ||
+    characters[0];
+
+  const nick = active?.nickname || user?.displayName || user?.username || 'Клан мембер';
+  const cls = active?.className || (role === 'admin' ? 'Warlock (Котовод)' : role === 'scout' ? 'Silver Ranger' : 'Watcher');
+  const lvl = active?.levelNumber || 75;
+  const clan = active?.clanName || user?.clanName || 'Pay2KILL';
+
+  // Sync user's active character or account name to the tribune with steady heartbeat
   useEffect(() => {
-    const active =
-      characters.find((c) => c.id === activeCharacterId) ||
-      characters.find((c) => c.isMain) ||
-      characters[0];
-
-    const nick = active?.nickname || user?.displayName || user?.username || 'Клан мембер';
-    const cls = active?.className || (role === 'admin' ? 'Warlock (Котовод)' : role === 'scout' ? 'Silver Ranger' : 'Watcher');
-    const lvl = active?.levelNumber || 75;
-    const clan = active?.clanName || user?.clanName || 'Pay2KILL';
-
     const sendHeartbeat = () => {
-      void syncUserCharacterToSpectator({
+      void useBossTrackerStore.getState().syncUserCharacterToSpectator({
         nickname: nick,
         className: cls,
         level: lvl,
@@ -50,9 +50,9 @@ export function BossTrackerTribune() {
     };
 
     sendHeartbeat();
-    const interval = setInterval(sendHeartbeat, 10000);
+    const interval = setInterval(sendHeartbeat, 15000);
     return () => clearInterval(interval);
-  }, [characters, activeCharacterId, user, role, syncUserCharacterToSpectator]);
+  }, [nick, cls, lvl, clan]);
 
   const renderClassIcon = (className: string) => {
     const lower = className.toLowerCase();

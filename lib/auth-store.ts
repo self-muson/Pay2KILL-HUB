@@ -158,20 +158,31 @@ export const useAuthStore = create<AuthState>((set, get) => {
                 activeCharacterId: data.user.activeCharacterId || data.user.characters[0].id,
               });
             }
+          }
+        } else if (res.status === 401) {
+          // If server returns 401 but we have valid cached user in localStorage,
+          // preserve cached user to prevent annoying session drop during server restart
+          const cached = getInitialUser();
+          if (cached) {
+            set({ user: cached, token: storedToken });
+            useBossTrackerStore.getState().setSessionFromPin({
+              role: cached.role,
+              isAdmin: cached.role === 'admin',
+              isScout: cached.role === 'scout',
+            });
           } else {
             localStorage.removeItem(TOKEN_KEY);
             localStorage.removeItem(USER_CACHE_KEY);
             (window as any).__p2k_current_user = null;
             set({ user: null, token: null });
           }
-        } else if (res.status === 401) {
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(USER_CACHE_KEY);
-          (window as any).__p2k_current_user = null;
-          set({ user: null, token: null });
         }
       } catch (e) {
         console.error('Failed to initialize auth (keeping offline cache)', e);
+        const cached = getInitialUser();
+        if (cached) {
+          set({ user: cached, token: storedToken });
+        }
       } finally {
         set({ isLoading: false, isInitialized: true });
       }

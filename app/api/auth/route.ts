@@ -3,17 +3,17 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 import {
-  registerUser,
-  loginUser,
+  registerUserAsync,
+  loginUserAsync,
   getUserByToken,
   getUserByTokenAsync,
   getAllUsers,
   getAllUsersAsync,
-  updateUserRole,
-  updateUserPermissions,
-  updateUserCharacters,
-  updateUserProfile,
-  deleteUser,
+  updateUserRoleAsync,
+  updateUserPermissionsAsync,
+  updateUserCharactersAsync,
+  updateUserProfileAsync,
+  deleteUserAsync,
 } from '@/lib/user-store';
 
 export async function GET(req: NextRequest) {
@@ -32,7 +32,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ success: true, user });
 }
 
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -40,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'register') {
       const { username, password, displayName, clanName, discordTag, inviteCode } = body;
-      const result = registerUser({
+      const result = await registerUserAsync({
         username,
         password,
         displayName,
@@ -58,7 +57,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'login') {
       const { username, password } = body;
-      const result = loginUser(username, password);
+      const result = await loginUserAsync(username, password);
 
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
@@ -83,7 +82,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Необходима авторизация' }, { status: 401 });
       }
 
-      const result = updateUserCharacters(user.id, characters, activeCharacterId);
+      const result = await updateUserCharactersAsync(user.id, characters, activeCharacterId);
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
@@ -99,7 +98,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Необходима авторизация' }, { status: 401 });
       }
 
-      const result = updateUserProfile(user.id, { displayName, clanName, discordTag });
+      const result = await updateUserProfileAsync(user.id, { displayName, clanName, discordTag });
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
@@ -121,49 +120,49 @@ export async function POST(req: NextRequest) {
 
     if (action === 'update_user_role') {
       const { token, targetUserId, newRole } = body;
-      const user = getUserByToken(token);
+      const user = await getUserByTokenAsync(token);
       if (!user || (user.role !== 'admin' && !user.permissions?.canManageUsers)) {
         return NextResponse.json({ error: 'Доступ только для Лидера Клана (Администратора)' }, { status: 403 });
       }
 
-      const result = updateUserRole(user.id, targetUserId, newRole);
+      const result = await updateUserRoleAsync(user.id, targetUserId, newRole);
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
 
-      const users = getAllUsers();
+      const users = await getAllUsersAsync();
       return NextResponse.json({ success: true, users });
     }
 
     if (action === 'update_user_permissions') {
       const { token, targetUserId, permissions } = body;
-      const user = getUserByToken(token);
+      const user = await getUserByTokenAsync(token);
       if (!user || (user.role !== 'admin' && !user.permissions?.canManageUsers)) {
         return NextResponse.json({ error: 'Доступ только для Лидера Клана (Администратора)' }, { status: 403 });
       }
 
-      const result = updateUserPermissions(user.id, targetUserId, permissions);
+      const result = await updateUserPermissionsAsync(user.id, targetUserId, permissions);
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
 
-      const users = getAllUsers();
+      const users = await getAllUsersAsync();
       return NextResponse.json({ success: true, users, updatedUser: result.updatedUser });
     }
 
     if (action === 'delete_user') {
       const { token, targetUserId } = body;
-      const user = getUserByToken(token);
+      const user = await getUserByTokenAsync(token);
       if (!user || user.role !== 'admin') {
         return NextResponse.json({ error: 'Доступ только для Лидера Клана (Администратора)' }, { status: 403 });
       }
 
-      const result = deleteUser(user.id, targetUserId);
+      const result = await deleteUserAsync(user.id, targetUserId);
       if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
 
-      const users = getAllUsers();
+      const users = await getAllUsersAsync();
       return NextResponse.json({ success: true, users });
     }
 

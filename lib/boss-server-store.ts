@@ -48,28 +48,24 @@ function ensureDirSync(dir: string) {
   }
 }
 
-function persistState() {
+export async function persistStateAsync(): Promise<void> {
   try {
-    ensureDirSync(DATA_DIR);
-    const dataStr = JSON.stringify(globalThis.__p2k_boss_server_state);
-    fs.writeFileSync(DATA_FILE, dataStr, 'utf8');
-    fs.writeFileSync(BACKUP_FILE, dataStr, 'utf8');
-  } catch {
+    const state = getStateRef();
+    const dataStr = JSON.stringify(state);
+    // Write to /tmp/ backup (safe outside project watch tree)
     try {
-      if (globalThis.__p2k_boss_server_state) {
-        fs.writeFileSync(BACKUP_FILE, JSON.stringify(globalThis.__p2k_boss_server_state), 'utf8');
-      }
-    } catch {
-      // ignore
-    }
-  }
+      fs.writeFileSync(BACKUP_FILE, dataStr, 'utf8');
+    } catch {}
 
-  // Asynchronously sync to Cloud Firestore
-  try {
-    if (globalThis.__p2k_boss_server_state) {
-      void saveBossStateToFirestore(globalThis.__p2k_boss_server_state);
-    }
-  } catch {}
+    // Await save to Cloud Firestore so Cloud Run instance does not terminate before upload finishes
+    await saveBossStateToFirestore(state);
+  } catch (err) {
+    console.warn('persistStateAsync error:', err);
+  }
+}
+
+export function persistState(): void {
+  void persistStateAsync();
 }
 
 export function mergeIncomingBossState(incoming: BossServerState): void {
@@ -77,34 +73,46 @@ export function mergeIncomingBossState(incoming: BossServerState): void {
   if (!incoming || !Array.isArray(incoming.bosses)) return;
 
   const initial = buildInitialBosses();
+  const currentBosses = state.bosses && state.bosses.length > 0 ? state.bosses : initial;
+
+  const isIncomingAuthoritative = Boolean(incoming.lastUpdated && incoming.lastUpdated > (state.lastUpdated || 0));
+
   const mergedBosses = initial.map((initBoss) => {
+    const curr = currentBosses.find((b) => b.id === initBoss.id) || initBoss;
     const saved = incoming.bosses.find((b: TrackerBoss) => b.id === initBoss.id);
     if (saved) {
+      const deathMs = isIncomingAuthoritative ? saved.timeOfDeathTimestamp : (saved.timeOfDeathTimestamp || curr.timeOfDeathTimestamp);
+      const tod = isIncomingAuthoritative ? saved.timeOfDeath : (saved.timeOfDeath || curr.timeOfDeath);
+      const spotter = isIncomingAuthoritative ? saved.assignedSpotter : (saved.assignedSpotter !== undefined ? saved.assignedSpotter : curr.assignedSpotter);
+      const spawnAlert = isIncomingAuthoritative ? saved.spawnAlertUntil : (saved.spawnAlertUntil !== undefined ? saved.spawnAlertUntil : curr.spawnAlertUntil);
+
       return {
         ...initBoss,
-        timeOfDeath: saved.timeOfDeath,
-        timeOfDeathTimestamp: saved.timeOfDeathTimestamp,
-        windowStart: saved.windowStart,
-        windowEnd: saved.windowEnd,
-        windowStartTimestamp: saved.windowStartTimestamp,
-        windowEndTimestamp: saved.windowEndTimestamp,
-        phase: saved.phase || 'NO_DATA',
-        secondsUntilWindow: saved.secondsUntilWindow,
-        secondsRemainingInWindow: saved.secondsRemainingInWindow,
-        assignedSpotter: saved.assignedSpotter || null,
-        spawnAlertUntil: saved.spawnAlertUntil,
-        readyCheckUntil: saved.readyCheckUntil,
-        readyCheckBy: saved.readyCheckBy,
-        notes: saved.notes || initBoss.notes,
-        name: saved.name || initBoss.name,
-        camCode: saved.camCode || initBoss.camCode,
-        selectedAuthorGroup: saved.selectedAuthorGroup || initBoss.selectedAuthorGroup,
-        selectedAccountId: saved.selectedAccountId || initBoss.selectedAccountId,
-        selectedCharacterName: saved.selectedCharacterName || initBoss.selectedCharacterName,
-        selectedCamCode: saved.selectedCamCode || initBoss.selectedCamCode,
+        ...curr,
+        ...saved,
+        timeOfDeath: tod,
+        timeOfDeathTimestamp: deathMs,
+        windowStart: isIncomingAuthoritative ? saved.windowStart : (saved.windowStart || curr.windowStart),
+        windowEnd: isIncomingAuthoritative ? saved.windowEnd : (saved.windowEnd || curr.windowEnd),
+        windowStartTimestamp: isIncomingAuthoritative ? saved.windowStartTimestamp : (saved.windowStartTimestamp || curr.windowStartTimestamp),
+        windowEndTimestamp: isIncomingAuthoritative ? saved.windowEndTimestamp : (saved.windowEndTimestamp || curr.windowEndTimestamp),
+        phase: isIncomingAuthoritative ? (saved.phase || 'NO_DATA') : (saved.phase && saved.phase !== 'NO_DATA' ? saved.phase : curr.phase || 'NO_DATA'),
+        secondsUntilWindow: isIncomingAuthoritative ? saved.secondsUntilWindow : (saved.secondsUntilWindow !== undefined ? saved.secondsUntilWindow : curr.secondsUntilWindow),
+        secondsRemainingInWindow: isIncomingAuthoritative ? saved.secondsRemainingInWindow : (saved.secondsRemainingInWindow !== undefined ? saved.secondsRemainingInWindow : curr.secondsRemainingInWindow),
+        assignedSpotter: spotter,
+        spawnAlertUntil: spawnAlert,
+        readyCheckUntil: isIncomingAuthoritative ? saved.readyCheckUntil : (saved.readyCheckUntil !== undefined ? saved.readyCheckUntil : curr.readyCheckUntil),
+        readyCheckBy: isIncomingAuthoritative ? saved.readyCheckBy : (saved.readyCheckBy || curr.readyCheckBy),
+        notes: saved.notes || curr.notes || initBoss.notes,
+        name: saved.name || curr.name || initBoss.name,
+        camCode: saved.camCode || curr.camCode || initBoss.camCode,
+        selectedAuthorGroup: saved.selectedAuthorGroup || curr.selectedAuthorGroup || initBoss.selectedAuthorGroup,
+        selectedAccountId: saved.selectedAccountId || curr.selectedAccountId || initBoss.selectedAccountId,
+        selectedCharacterName: saved.selectedCharacterName || curr.selectedCharacterName || initBoss.selectedCharacterName,
+        selectedCamCode: saved.selectedCamCode || curr.selectedCamCode || initBoss.selectedCamCode,
       };
     }
-    return initBoss;
+    return curr;
   });
 
   const customBosses = incoming.bosses.filter(
@@ -112,32 +120,61 @@ export function mergeIncomingBossState(incoming: BossServerState): void {
   );
 
   state.bosses = [...mergedBosses, ...customBosses];
-  if (Array.isArray(incoming.spectators)) {
-    state.spectators = incoming.spectators;
+
+  // Merge spectators intelligently: keep latest active heartbeat
+  if (Array.isArray(incoming.spectators) && incoming.spectators.length > 0) {
+    const now = Date.now();
+    const existingMap = new Map<string, SpectatorUser>();
+    state.spectators.forEach((s) => existingMap.set(s.id || s.nickname.toLowerCase(), s));
+    incoming.spectators.forEach((s) => {
+      const key = s.id || s.nickname.toLowerCase();
+      const prev = existingMap.get(key);
+      if (!prev || s.lastActive >= prev.lastActive) {
+        existingMap.set(key, s);
+      }
+    });
+    state.spectators = Array.from(existingMap.values()).filter((s) => now - s.lastActive < 120000);
   }
-  if (incoming.accountOccupancies) {
-    state.accountOccupancies = incoming.accountOccupancies;
+
+  if (incoming.accountOccupancies && Object.keys(incoming.accountOccupancies).length > 0) {
+    state.accountOccupancies = { ...state.accountOccupancies, ...incoming.accountOccupancies };
   }
-  if (Array.isArray(incoming.customAccounts)) {
+  if (Array.isArray(incoming.customAccounts) && incoming.customAccounts.length > 0) {
     state.customAccounts = incoming.customAccounts;
   }
-  if (Array.isArray(incoming.spawnAlertLogs)) {
+  if (Array.isArray(incoming.spawnAlertLogs) && incoming.spawnAlertLogs.length > 0) {
     state.spawnAlertLogs = incoming.spawnAlertLogs;
   }
-  state.lastUpdated = incoming.lastUpdated || Date.now();
+  if (incoming.lastUpdated) {
+    state.lastUpdated = Math.max(state.lastUpdated || 0, incoming.lastUpdated);
+  }
 }
 
+let lastFirestoreSync = 0;
+let isSyncingFirestore = false;
+
 export async function syncBossStateWithFirestore(): Promise<void> {
+  const now = Date.now();
+  // Throttle Firestore sync on GET: at most once every 10 seconds
+  if (now - lastFirestoreSync < 10000 || isSyncingFirestore) {
+    return;
+  }
+  isSyncingFirestore = true;
+  lastFirestoreSync = now;
+
   try {
-    const fsState = await getBossStateFromFirestore();
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+    const fsState = await Promise.race([getBossStateFromFirestore(), timeoutPromise]);
     if (fsState && Array.isArray(fsState.bosses) && fsState.bosses.length > 0) {
       const state = getStateRef();
-      if (!state.lastUpdated || (fsState.lastUpdated && fsState.lastUpdated >= state.lastUpdated)) {
+      if (!state.lastUpdated || (fsState.lastUpdated && fsState.lastUpdated > state.lastUpdated)) {
         mergeIncomingBossState(fsState);
       }
     }
   } catch (e) {
     console.warn('syncBossStateWithFirestore error:', e);
+  } finally {
+    isSyncingFirestore = false;
   }
 }
 
